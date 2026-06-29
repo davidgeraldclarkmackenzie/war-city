@@ -1,0 +1,3293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>War of the Chasm</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+    }
+  }
+  </script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; font-family: monospace; color: #ccc; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+
+    #ui {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+      display: flex; justify-content: space-between; align-items: flex-start;
+      padding: 8px 12px; pointer-events: none;
+    }
+    .panel {
+      background: rgba(8,8,18,0.82); border: 1px solid #333;
+      padding: 7px 12px; min-width: 155px; pointer-events: all; font-size: 11px;
+      backdrop-filter: blur(4px);
+    }
+    .panel.blue   { border-color: #336; }
+    .panel.yellow { border-color: #640; }
+    .panel h3 { font-size: 9px; letter-spacing: 3px; margin-bottom: 5px; text-transform: uppercase; }
+    .panel.blue h3   { color: #4af; }
+    .panel.yellow h3 { color: #fa4; }
+    .stat { color: #aaa; margin: 2px 0; }
+    .stat b { color: #fff; }
+
+    .rci { margin-top: 6px; padding-top: 5px; border-top: 1px solid #222; }
+    .rci-row { display: flex; align-items: center; gap: 5px; margin: 3px 0; }
+    .rci-lbl { font-size: 9px; font-weight: bold; width: 10px; text-align: center; }
+    .rci-lbl.r { color: #4c4; }
+    .rci-lbl.c { color: #4af; }
+    .rci-lbl.i { color: #fc4; }
+    .rci-track { flex: 1; height: 7px; background: #1a1a26; border: 1px solid #2a2a3a; position: relative; overflow: hidden; }
+    .rci-track i { display: block; height: 100%; width: 0%; transition: width 0.4s ease; }
+    #blue-rci-r { background: #3a3; } #blue-rci-c { background: #38c; } #blue-rci-i { background: #da3; }
+
+    #center { text-align: center; pointer-events: none; }
+    #timer { font-size: 28px; font-weight: bold; letter-spacing: 2px; }
+    #timer.peace { color: #0ef; text-shadow: 0 0 12px #0cf; }
+    #timer.war   { color: #f44; text-shadow: 0 0 12px #f22; }
+    #peace-label { font-size: 9px; color: #666; letter-spacing: 3px; margin-top: 1px; }
+    #nodes { font-size: 9px; color: #888; margin-top: 4px; line-height: 1.6; }
+    #plague-warn {
+      display: none; margin-top: 4px; background: #700; color: #faa;
+      font-size: 9px; padding: 2px 8px; letter-spacing: 1px;
+    }
+
+    #toolbar {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
+      background: rgba(6,6,14,0.92); border-top: 1px solid #222;
+      padding: 6px 8px; display: flex; gap: 4px; flex-wrap: wrap;
+      backdrop-filter: blur(6px);
+    }
+    .grp { display: flex; gap: 2px; align-items: center; margin-right: 4px; }
+    .grp-label {
+      font-size: 8px; color: #555; text-transform: uppercase; letter-spacing: 1px;
+      padding: 0 4px; border-right: 1px solid #222; margin-right: 2px; white-space: nowrap;
+    }
+    .btn {
+      background: #0d0d18; border: 1px solid #333; color: #aaa;
+      padding: 4px 8px; font-size: 10px; font-family: monospace; cursor: pointer;
+      line-height: 1.3; white-space: nowrap; transition: all 0.1s;
+    }
+    .btn:hover  { background: #18182a; border-color: #666; color: #fff; }
+    .btn.active { background: #0a1a30; border-color: #4af; color: #4af; }
+    .btn.red    { border-color: #622; color: #f88; }
+    .btn.red:hover { background: #1a0808; }
+    .sub  { display: block; font-size: 8px; color: #555; }
+
+    #message-log { position: fixed; left: 12px; bottom: 80px; font-size: 11px; pointer-events: none; z-index: 10; }
+    .msg { color: #aaa; text-shadow: 0 1px 3px #000; animation: fadeMsg 4s forwards; }
+    @keyframes fadeMsg { 0%,70%{opacity:1} 100%{opacity:0} }
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div id="ui">
+  <div class="panel blue">
+    <h3>Blue Force</h3>
+    <div class="stat">Cash: $<b id="blue-cash">100,000</b></div>
+    <div class="stat">Pop: <b id="blue-pop">0</b></div>
+    <div class="stat">HQs: <b id="blue-hqs">2</b>/5</div>
+    <div class="stat">Income: $<b id="blue-income">0</b>/s</div>
+    <div class="rci">
+      <div class="rci-row"><span class="rci-lbl r">R</span><span class="rci-track"><i id="blue-rci-r"></i></span></div>
+      <div class="rci-row"><span class="rci-lbl c">C</span><span class="rci-track"><i id="blue-rci-c"></i></span></div>
+      <div class="rci-row"><span class="rci-lbl i">I</span><span class="rci-track"><i id="blue-rci-i"></i></span></div>
+    </div>
+  </div>
+
+  <div id="center">
+    <div id="timer" class="peace">10:00</div>
+    <div id="peace-label">PEACE TREATY</div>
+    <div id="nodes">
+      <div id="node-left">◈ Left: BLUE (trade port)</div>
+      <div id="node-right">◈ Right: YELLOW (bridge armor)</div>
+    </div>
+    <div id="plague-warn">⚠ PLAGUE OUTBREAK</div>
+  </div>
+
+  <div class="panel yellow">
+    <h3>Yellow Force</h3>
+    <div class="stat">Cash: $<b id="yellow-cash">100,000</b></div>
+    <div class="stat">Pop: <b id="yellow-pop">0</b></div>
+    <div class="stat">HQs: <b id="yellow-hqs">2</b>/5</div>
+    <div class="stat">Income: $<b id="yellow-income">0</b>/s</div>
+  </div>
+</div>
+
+<div id="message-log"></div>
+
+<div id="toolbar">
+  <!-- Select -->
+  <div class="grp">
+    <button class="btn active" data-tool="select" onclick="setTool('select')">Select</button>
+    <button class="btn red" data-tool="bulldoze" onclick="setTool('bulldoze')">Bulldoze<span class="sub">clear tile</span></button>
+  </div>
+
+  <!-- Roads -->
+  <div class="grp">
+    <span class="grp-label">Land</span>
+    <button class="btn" data-tool="buy_land" onclick="setTool('buy_land')">Buy Land<span class="sub">expand 5×5</span></button>
+    <button class="btn" data-tool="road" onclick="setTool('road')">Road<span class="sub">$100 — drag</span></button>
+    <button class="btn" data-tool="power_line" onclick="setTool('power_line')">Power Line<span class="sub">$50 — drag</span></button>
+  </div>
+
+  <!-- Zones -->
+  <div class="grp">
+    <span class="grp-label">Zones (drag)</span>
+    <button class="btn" data-tool="zone_res" onclick="setTool('zone_res')">Residential<span class="sub">$500 — homes</span></button>
+    <button class="btn" data-tool="zone_com" onclick="setTool('zone_com')">Commercial<span class="sub">$1k — shops</span></button>
+    <button class="btn" data-tool="zone_ind" onclick="setTool('zone_ind')">Industrial<span class="sub">$800 — jobs</span></button>
+  </div>
+
+  <!-- Utilities -->
+  <div class="grp">
+    <span class="grp-label">Utilities</span>
+    <button class="btn" data-tool="coal_power" onclick="setTool('coal_power')">Coal Plant<span class="sub">$20k</span></button>
+    <button class="btn" data-tool="wind_power" onclick="setTool('wind_power')">Wind<span class="sub">$3k</span></button>
+    <button class="btn" data-tool="water_pump" onclick="setTool('water_pump')">Water Pump<span class="sub">$8k — col 39</span></button>
+    <button class="btn" data-tool="sewage" onclick="setTool('sewage')">Sewage<span class="sub">$2k</span></button>
+    <button class="btn" data-tool="landfill" onclick="setTool('landfill')">Landfill<span class="sub">$4k</span></button>
+    <button class="btn" data-tool="incinerator" onclick="setTool('incinerator')">Incinerator<span class="sub">$30k</span></button>
+  </div>
+
+  <!-- Services -->
+  <div class="grp">
+    <span class="grp-label">Services</span>
+    <button class="btn" data-tool="hospital" onclick="setTool('hospital')">Hospital<span class="sub">$35k</span></button>
+    <button class="btn" data-tool="police" onclick="setTool('police')">Police<span class="sub">$12k</span></button>
+    <button class="btn" data-tool="fire" onclick="setTool('fire')">Fire Dept<span class="sub">$12k</span></button>
+    <button class="btn" data-tool="park" onclick="setTool('park')">Park<span class="sub">$2k</span></button>
+  </div>
+
+  <!-- Military -->
+  <div class="grp">
+    <span class="grp-label">Military</span>
+    <button class="btn" data-tool="hq" onclick="setTool('hq')">HQ<span class="sub">$250k</span></button>
+    <button class="btn" data-tool="barracks" onclick="setTool('barracks')">Barracks<span class="sub">$5k</span></button>
+  </div>
+
+  <!-- Industry -->
+  <div class="grp">
+    <span class="grp-label">Industry</span>
+    <button class="btn" data-tool="coal_mine" onclick="setTool('coal_mine')">Coal Mine<span class="sub">$15k</span></button>
+    <button class="btn" data-tool="iron_refinery" onclick="setTool('iron_refinery')">Iron Refinery<span class="sub">$25k</span></button>
+    <button class="btn" data-tool="gold_mine" onclick="setTool('gold_mine')">Gold Mine<span class="sub">$50k</span></button>
+  </div>
+
+  <!-- Logistics -->
+  <div class="grp">
+    <span class="grp-label">Logistics</span>
+    <button class="btn" data-tool="bridge_truck_depot" onclick="setTool('bridge_truck_depot')">Bridge Depot<span class="sub">$18k</span></button>
+    <button class="btn" data-tool="railway_station" onclick="setTool('railway_station')">Rail Station<span class="sub">$40k</span></button>
+    <button class="btn" onclick="spawnBridgeTruck(false)">Bridge Truck<span class="sub">$8k</span></button>
+    <button class="btn" onclick="spawnBridgeTruck(true)">Rail Truck<span class="sub">$15k</span></button>
+  </div>
+
+  <!-- War Train -->
+  <div class="grp">
+    <span class="grp-label">War Train</span>
+    <button class="btn" onclick="buyWarTrain()">Buy Train<span class="sub">$100k</span></button>
+    <button class="btn" onclick="addTrainSlot('artillery')">Artillery<span class="sub">$20k</span></button>
+    <button class="btn" onclick="addTrainSlot('anti_infantry')">Anti-Inf<span class="sub">$10k</span></button>
+    <button class="btn" onclick="addTrainSlot('troops')">Troops<span class="sub">$15k</span></button>
+    <button class="btn" onclick="addTrainSlot('repair')">Repair<span class="sub">$8k</span></button>
+  </div>
+
+  <!-- Combat tools -->
+  <div class="grp">
+    <span class="grp-label">Combat</span>
+    <button class="btn red" data-tool="destroy_bridge" onclick="setTool('destroy_bridge')">Destroy Bridge<span class="sub">war only</span></button>
+    <button class="btn red" data-tool="destroy_rail" onclick="setTool('destroy_rail')">Sabotage Rail<span class="sub">war only</span></button>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ===================== constants.js =====================
+const GRID_SIZE = 82;
+const TILE = 1; // world-unit size per tile (Three.js)
+
+// Territory layout
+const CHASM_X_START = 40;
+const CHASM_X_END   = 41;
+const BLUE_X_START  = 0;
+const BLUE_X_END    = 39;
+const YELLOW_X_START = 42;
+const YELLOW_X_END   = 81;
+
+const BRIDGE_LANES = [10, 25, 41, 57, 72];
+const BRIDGE_HALF_WIDTH = 2; // bridges span 5 z-tiles (z-2..z+2) → wide crossings
+
+// Starting economy
+const STARTING_CASH = 100_000;
+const HQ_COST       = 250_000;
+const MAX_HQS       = 5;
+
+// Peace treaty
+const PEACE_DURATION = 600;
+
+// Perimeter rail
+const PERIMETER_LEN = 324;
+
+function perimeterToXZ(pos) {
+  pos = ((pos % PERIMETER_LEN) + PERIMETER_LEN) % PERIMETER_LEN;
+  if (pos < 82)  return [pos, 0];
+  if (pos < 163) return [81, pos - 81];
+  if (pos < 244) return [81 - (pos - 162), 81];
+  return [0, 81 - (pos - 243)];
+}
+
+// Tile types
+const T = {
+  EMPTY:            0,
+  ROAD:             1,
+  WATER:            2,
+  RAIL:             3,
+  BRIDGE:           4,
+  BRIDGE_BROKEN:    5,
+  RAIL_BROKEN:      6,
+  TEMP_BRIDGE:      7,
+  EDGE_NODE:        8,
+  POWER_LINE:       9,
+
+  // Zones (50+) — painted areas that grow into buildings
+  ZONE_RES: 50, // residential
+  ZONE_COM: 51, // commercial
+  ZONE_IND: 52, // industrial
+
+  // Blue structures (10x)
+  BLUE_HQ:          10,
+  BLUE_BARRACKS:    11,
+  BLUE_COAL_POWER:  12,
+  BLUE_WIND:        13,
+  BLUE_WATER_PUMP:  14,
+  BLUE_SEWAGE:      15,
+  BLUE_LANDFILL:    16,
+  BLUE_INCINERATOR: 17,
+  BLUE_COAL_MINE:   18,
+  BLUE_IRON:        19,
+  BLUE_GOLD:        20,
+  BLUE_BRIDGE_DEPOT:21,
+  BLUE_RAIL_STATION:22,
+
+  // Yellow structures (30x)
+  YELLOW_HQ:          30,
+  YELLOW_BARRACKS:    31,
+  YELLOW_COAL_POWER:  32,
+  YELLOW_WIND:        33,
+  YELLOW_WATER_PUMP:  34,
+  YELLOW_SEWAGE:      35,
+  YELLOW_LANDFILL:    36,
+  YELLOW_INCINERATOR: 37,
+  YELLOW_COAL_MINE:   38,
+  YELLOW_IRON:        39,
+  YELLOW_GOLD:        40,
+  YELLOW_BRIDGE_DEPOT:41,
+  YELLOW_RAIL_STATION:42,
+
+  // Service buildings (shared 6x)
+  BLUE_HOSPITAL:   60,
+  YELLOW_HOSPITAL: 61,
+  BLUE_POLICE:     62,
+  YELLOW_POLICE:   63,
+  BLUE_FIRE:       64,
+  YELLOW_FIRE:     65,
+  BLUE_PARK:       66,
+  YELLOW_PARK:     67,
+};
+
+const STRUCTURE_COSTS = {
+  road:            100,
+  power_line:       50,
+  hq:          250_000,
+  barracks:      5_000,
+  coal_power:   20_000,
+  wind_power:    3_000,
+  water_pump:    8_000,
+  sewage:        2_000,
+  landfill:      4_000,
+  incinerator:  30_000,
+  coal_mine:    15_000,
+  iron_refinery:25_000,
+  gold_mine:    50_000,
+  bridge_truck_depot: 18_000,
+  railway_station:    40_000,
+  hospital:     35_000,
+  police:       12_000,
+  fire:         12_000,
+  park:          2_000,
+  zone_res:      500,
+  zone_com:    1_000,
+  zone_ind:      800,
+  war_train:   100_000,
+  slot_artillery:  20_000,
+  slot_anti_inf:   10_000,
+  slot_troops:     15_000,
+  slot_repair:      8_000,
+  bridge_truck:     8_000,
+  rail_bridge_truck:15_000,
+};
+
+// Building visual definitions for 3D renderer
+// { w, h, d } in tile units; color hex
+const BUILD_DEF = {
+  [T.ROAD]:         { w:0.96, h:0.07, d:0.96, c:'#44445a' },
+  [T.BRIDGE]:       { w:0.96, h:0.14, d:0.96, c:'#887755' },
+  [T.BRIDGE_BROKEN]:{ w:0.96, h:0.06, d:0.96, c:'#441111' },
+  [T.TEMP_BRIDGE]:  { w:0.96, h:0.14, d:0.96, c:'#448866' },
+  [T.RAIL]:         { w:0.96, h:0.05, d:0.96, c:'#5a4020' },
+  [T.RAIL_BROKEN]:  { w:0.96, h:0.04, d:0.96, c:'#551111' },
+
+  // Zones (undeveloped — shown as colored flat slabs)
+  [T.ZONE_RES]: { w:0.92, h:0.06, d:0.92, c:'#228833' },
+  [T.ZONE_COM]: { w:0.92, h:0.06, d:0.92, c:'#2266aa' },
+  [T.ZONE_IND]: { w:0.92, h:0.06, d:0.92, c:'#886622' },
+
+  // Blue structures
+  [T.BLUE_HQ]:          { w:0.60, h:6.0, d:0.60, c:'#3377ff', label:'HQ' },
+  [T.BLUE_BARRACKS]:    { w:0.85, h:1.0, d:0.85, c:'#1144cc' },
+  [T.BLUE_COAL_POWER]:  { w:0.85, h:2.0, d:0.85, c:'#445566', chimney:true },
+  [T.BLUE_WIND]:        { w:0.10, h:3.2, d:0.10, c:'#33aa77', turbine:true },
+  [T.BLUE_WATER_PUMP]:  { w:0.50, h:0.6, d:0.50, c:'#0099cc' },
+  [T.BLUE_SEWAGE]:      { w:0.45, h:0.2, d:0.45, c:'#556633' },
+  [T.BLUE_LANDFILL]:    { w:0.95, h:0.2, d:0.95, c:'#554422' },
+  [T.BLUE_INCINERATOR]: { w:0.40, h:3.0, d:0.40, c:'#884411', chimney:true },
+  [T.BLUE_COAL_MINE]:   { w:0.85, h:0.5, d:0.85, c:'#334455' },
+  [T.BLUE_IRON]:        { w:0.88, h:1.5, d:0.88, c:'#667788' },
+  [T.BLUE_GOLD]:        { w:0.65, h:1.0, d:0.65, c:'#aa8833' },
+  [T.BLUE_BRIDGE_DEPOT]:{ w:0.75, h:0.7, d:0.75, c:'#335577' },
+  [T.BLUE_RAIL_STATION]:{ w:0.94, h:0.6, d:0.94, c:'#224466' },
+
+  // Yellow structures
+  [T.YELLOW_HQ]:          { w:0.60, h:6.0, d:0.60, c:'#ffbb22', label:'HQ' },
+  [T.YELLOW_BARRACKS]:    { w:0.85, h:1.0, d:0.85, c:'#cc8800' },
+  [T.YELLOW_COAL_POWER]:  { w:0.85, h:2.0, d:0.85, c:'#665544', chimney:true },
+  [T.YELLOW_WIND]:        { w:0.10, h:3.2, d:0.10, c:'#99bb22', turbine:true },
+  [T.YELLOW_WATER_PUMP]:  { w:0.50, h:0.6, d:0.50, c:'#cc9900' },
+  [T.YELLOW_SEWAGE]:      { w:0.45, h:0.2, d:0.45, c:'#886633' },
+  [T.YELLOW_LANDFILL]:    { w:0.95, h:0.2, d:0.95, c:'#775533' },
+  [T.YELLOW_INCINERATOR]: { w:0.40, h:3.0, d:0.40, c:'#aa5511', chimney:true },
+  [T.YELLOW_COAL_MINE]:   { w:0.85, h:0.5, d:0.85, c:'#554433' },
+  [T.YELLOW_IRON]:        { w:0.88, h:1.5, d:0.88, c:'#998877' },
+  [T.YELLOW_GOLD]:        { w:0.65, h:1.0, d:0.65, c:'#ddaa44' },
+  [T.YELLOW_BRIDGE_DEPOT]:{ w:0.75, h:0.7, d:0.75, c:'#775533' },
+  [T.YELLOW_RAIL_STATION]:{ w:0.94, h:0.6, d:0.94, c:'#665522' },
+
+  // Service buildings — white/clean civic look, flagged for special render
+  [T.BLUE_HOSPITAL]:   { w:0.9, h:1.6, d:0.9, c:'#eef2f5', service:'hospital' },
+  [T.YELLOW_HOSPITAL]: { w:0.9, h:1.6, d:0.9, c:'#eef2f5', service:'hospital' },
+  [T.BLUE_POLICE]:     { w:0.85, h:1.2, d:0.85, c:'#33415e', service:'police' },
+  [T.YELLOW_POLICE]:   { w:0.85, h:1.2, d:0.85, c:'#33415e', service:'police' },
+  [T.BLUE_FIRE]:       { w:0.85, h:1.1, d:0.85, c:'#a33', service:'fire' },
+  [T.YELLOW_FIRE]:     { w:0.85, h:1.1, d:0.85, c:'#a33', service:'fire' },
+  [T.BLUE_PARK]:       { w:0.9, h:0.12, d:0.9, c:'#3a7d33', service:'park' },
+  [T.YELLOW_PARK]:     { w:0.9, h:0.12, d:0.9, c:'#3a7d33', service:'park' },
+};
+
+
+// ===================== grid.js =====================
+class Grid {
+  constructor() {
+    this.data = Array.from({ length: GRID_SIZE }, () => new Uint8Array(GRID_SIZE));
+    this.meta = Array.from({ length: GRID_SIZE }, () => Array.from({ length: GRID_SIZE }, () => ({})));
+    this._initHeightmap();
+    this._initParcels();
+    this._initChasm();
+    this._initRailPerimeter();
+    this._initBridges();
+  }
+
+  // ── Elevation (smooth value-noise hills) ──────────────────────────────────
+  _initHeightmap() {
+    this.height = Array.from({ length: GRID_SIZE }, () => new Float32Array(GRID_SIZE));
+    // A few random low-frequency sine lobes summed → rolling hills.
+    const lobes = [];
+    for (let i = 0; i < 6; i++) {
+      lobes.push({
+        ax: 0.04 + Math.random() * 0.10,
+        az: 0.04 + Math.random() * 0.10,
+        px: Math.random() * Math.PI * 2,
+        pz: Math.random() * Math.PI * 2,
+        amp: 0.8 + Math.random() * 2.2,
+      });
+    }
+    const MAXH = 5.0;
+    for (let x = 0; x < GRID_SIZE; x++) {
+      for (let z = 0; z < GRID_SIZE; z++) {
+        let h = 0;
+        for (const l of lobes) h += Math.sin(x * l.ax + l.px) * Math.cos(z * l.az + l.pz) * l.amp;
+        h = (h + 6) * 0.45;                 // shift positive
+        h = Math.max(0, Math.min(MAXH, h)); // clamp
+
+        // Flatten a corridor around the chasm so crossings stay level & playable
+        const distToChasm = Math.min(
+          Math.abs(x - CHASM_X_START), Math.abs(x - CHASM_X_END)
+        );
+        if (distToChasm < 6) h *= distToChasm / 6;
+        // Flatten the rail perimeter ring
+        if (x <= 1 || x >= GRID_SIZE - 2 || z <= 1 || z >= GRID_SIZE - 2) h *= 0.2;
+
+        // Quantize to discrete terrace steps so per-tile ground tiles flush together
+        h = Math.round(h / 0.5) * 0.5;
+
+        this.height[x][z] = h;
+      }
+    }
+  }
+
+  elevation(x, z) {
+    if (x < 0 || x >= GRID_SIZE || z < 0 || z >= GRID_SIZE) return 0;
+    return this.height[x][z];
+  }
+
+  // ── Land parcels (5×5 per faction; buy before building) ───────────────────
+  _initParcels() {
+    // Blue territory x∈[1..39], Yellow x∈[42..80]. 5×5 parcels each.
+    this.PARCELS = 5;
+    this.owned = { blue: new Set(), yellow: new Set() };
+    // Blue (player) starts owning the two leftmost parcel columns near its HQs.
+    for (let row = 0; row < this.PARCELS; row++) {
+      this.owned.blue.add(this._pkey(0, row));
+      this.owned.blue.add(this._pkey(1, row));
+    }
+    // Yellow (AI) owns all its land so it can build freely.
+    for (let col = 0; col < this.PARCELS; col++)
+      for (let row = 0; row < this.PARCELS; row++)
+        this.owned.yellow.add(this._pkey(col, row));
+  }
+  _pkey(col, row) { return col + ',' + row; }
+
+  // Map a tile to its parcel (col,row) within its faction, or null if outside/chasm.
+  parcelOf(x, z) {
+    let faction, lo, hi;
+    if (x >= 1 && x <= BLUE_X_END)            { faction = 'blue';   lo = 1;            hi = BLUE_X_END; }
+    else if (x >= YELLOW_X_START && x <= GRID_SIZE - 2) { faction = 'yellow'; lo = YELLOW_X_START; hi = GRID_SIZE - 2; }
+    else return null;
+    const span = hi - lo + 1;
+    const col = Math.min(this.PARCELS - 1, Math.floor((x - lo) / (span / this.PARCELS)));
+    const row = Math.min(this.PARCELS - 1, Math.floor(z / (GRID_SIZE / this.PARCELS)));
+    return { faction, col, row, key: this._pkey(col, row) };
+  }
+
+  isOwned(x, z) {
+    const p = this.parcelOf(x, z);
+    if (!p) return true; // chasm/perimeter not parcel-gated
+    return this.owned[p.faction].has(p.key);
+  }
+
+  buyParcel(faction, col, row) {
+    this.owned[faction].add(this._pkey(col, row));
+  }
+
+  // Cost scales with how many parcels you already own beyond the starting 10.
+  parcelCost(faction) {
+    const extra = Math.max(0, this.owned[faction].size - 10);
+    return Math.round(8000 * Math.pow(1.4, extra));
+  }
+
+  _initChasm() {
+    for (let z = 0; z < GRID_SIZE; z++) {
+      this.data[CHASM_X_START][z] = T.WATER;
+      this.data[CHASM_X_END][z]   = T.WATER;
+    }
+  }
+
+  _initRailPerimeter() {
+    for (let x = 0; x < GRID_SIZE; x++) {
+      this.data[x][0]             = T.RAIL;
+      this.data[x][GRID_SIZE - 1] = T.RAIL;
+    }
+    for (let z = 0; z < GRID_SIZE; z++) {
+      this.data[0][z]             = T.RAIL;
+      this.data[GRID_SIZE - 1][z] = T.RAIL;
+    }
+    // Rail crosses chasm at top/bottom borders
+    this.data[CHASM_X_START][0]             = T.RAIL;
+    this.data[CHASM_X_END][0]               = T.RAIL;
+    this.data[CHASM_X_START][GRID_SIZE - 1] = T.RAIL;
+    this.data[CHASM_X_END][GRID_SIZE - 1]   = T.RAIL;
+  }
+
+  _initBridges() {
+    for (const z of BRIDGE_LANES) this._setBridgeBand(z, T.BRIDGE, true);
+  }
+
+  // A bridge "lane" is a wide band of tiles centered on z, spanning the 2-tile chasm.
+  _setBridgeBand(z, type, withHp) {
+    const HW = BRIDGE_HALF_WIDTH;
+    for (let dz = -HW; dz <= HW; dz++) {
+      const zz = z + dz;
+      if (zz < 1 || zz >= GRID_SIZE - 1) continue;
+      this.data[CHASM_X_START][zz] = type;
+      this.data[CHASM_X_END][zz]   = type;
+      if (withHp) {
+        this.meta[CHASM_X_START][zz] = { hp: 100, maxHp: 100 };
+        this.meta[CHASM_X_END][zz]   = { hp: 100, maxHp: 100 };
+      } else {
+        this.meta[CHASM_X_START][zz] = {};
+        this.meta[CHASM_X_END][zz]   = {};
+      }
+    }
+  }
+
+  get(x, z) {
+    if (x < 0 || x >= GRID_SIZE || z < 0 || z >= GRID_SIZE) return T.EMPTY;
+    return this.data[x][z];
+  }
+
+  set(x, z, type) {
+    if (x < 0 || x >= GRID_SIZE || z < 0 || z >= GRID_SIZE) return false;
+    this.data[x][z] = type;
+    return true;
+  }
+
+  isChasm(x) {
+    return x === CHASM_X_START || x === CHASM_X_END;
+  }
+
+  isBlueTerritory(x) {
+    return x >= 1 && x <= BLUE_X_END;
+  }
+
+  isYellowTerritory(x) {
+    return x >= YELLOW_X_START && x <= GRID_SIZE - 2;
+  }
+
+  isBridgeLane(z) {
+    return BRIDGE_LANES.includes(z);
+  }
+
+  isPassableCrossing(z) {
+    const a = this.data[CHASM_X_START][z];
+    const b = this.data[CHASM_X_END][z];
+    const ok = t => t === T.BRIDGE || t === T.TEMP_BRIDGE;
+    return ok(a) && ok(b);
+  }
+
+  bridgeIntact(z) {
+    return this.isPassableCrossing(z);
+  }
+
+  destroyBridge(z) {
+    if (this.data[CHASM_X_START][z] === T.TEMP_BRIDGE || this.data[CHASM_X_END][z] === T.TEMP_BRIDGE) return;
+    this._setBridgeBand(z, T.BRIDGE_BROKEN, false);
+  }
+
+  repairBridge(z) {
+    this._setBridgeBand(z, T.BRIDGE, true);
+  }
+
+  isRailPerimeter(x, z) {
+    return x === 0 || x === GRID_SIZE - 1 || z === 0 || z === GRID_SIZE - 1;
+  }
+
+  destroyRail(x, z) {
+    if (!this.isRailPerimeter(x, z)) return false;
+    const t = this.data[x][z];
+    if (t === T.RAIL) {
+      this.data[x][z] = T.RAIL_BROKEN;
+      return true;
+    }
+    return false;
+  }
+
+  repairRail(x, z) {
+    if (this.data[x][z] === T.RAIL_BROKEN) {
+      this.data[x][z] = T.RAIL;
+      return true;
+    }
+    return false;
+  }
+
+  // Find all Z positions with any passable crossing
+  allPassableCrossings() {
+    const result = [];
+    for (let z = 0; z < GRID_SIZE; z++) {
+      if (this.isPassableCrossing(z)) result.push(z);
+    }
+    return result;
+  }
+
+  hasAdjacentRoad(x, z) {
+    const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+    for (const [dx, dz] of dirs) {
+      const t = this.get(x + dx, z + dz);
+      if (t === T.ROAD || t === T.BRIDGE || t === T.TEMP_BRIDGE) return true;
+    }
+    return false;
+  }
+
+  // ── Power network ─────────────────────────────────────────────────────────
+  // Power flows from generator tiles through power-lines and roads, and energizes
+  // any building/zone adjacent to an energized conductor. Recomputed on demand.
+  _isPowerSource(t) {
+    return t === T.BLUE_COAL_POWER  || t === T.YELLOW_COAL_POWER ||
+           t === T.BLUE_WIND        || t === T.YELLOW_WIND;
+  }
+  _isConductor(t) {
+    // Power travels along power-lines, roads, and bridges
+    return t === T.POWER_LINE || t === T.ROAD || t === T.BRIDGE || t === T.TEMP_BRIDGE;
+  }
+
+  computePower() {
+    if (!this.powered) this.powered = Array.from({ length: GRID_SIZE }, () => new Uint8Array(GRID_SIZE));
+    for (let x = 0; x < GRID_SIZE; x++) this.powered[x].fill(0);
+
+    // BFS from every generator through conductors.
+    const queue = [];
+    for (let x = 0; x < GRID_SIZE; x++) {
+      for (let z = 0; z < GRID_SIZE; z++) {
+        if (this._isPowerSource(this.data[x][z])) {
+          this.powered[x][z] = 1;
+          queue.push([x, z]);
+        }
+      }
+    }
+    const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+    let head = 0;
+    while (head < queue.length) {
+      const [x, z] = queue[head++];
+      for (const [dx, dz] of dirs) {
+        const nx = x + dx, nz = z + dz;
+        if (nx < 0 || nx >= GRID_SIZE || nz < 0 || nz >= GRID_SIZE) continue;
+        if (this.powered[nx][nz]) continue;
+        const t = this.data[nx][nz];
+        // Conductors keep carrying power; sources are also conductors
+        if (this._isConductor(t) || this._isPowerSource(t)) {
+          this.powered[nx][nz] = 1;
+          queue.push([nx, nz]);
+        }
+      }
+    }
+    return this.powered;
+  }
+
+  // Is this tile energized? A building is powered if it OR an orthogonal
+  // neighbour is on the energized conductor network.
+  isPowered(x, z) {
+    if (!this.powered) return false;
+    if (this.powered[x] && this.powered[x][z]) return true;
+    const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+    for (const [dx, dz] of dirs) {
+      const nx = x + dx, nz = z + dz;
+      if (nx < 0 || nx >= GRID_SIZE || nz < 0 || nz >= GRID_SIZE) continue;
+      if (this.powered[nx] && this.powered[nx][nz]) return true;
+    }
+    return false;
+  }
+}
+
+
+// ===================== economy.js =====================
+const TAX_RATE = 10; // $ per resident per second
+
+class Economy {
+  constructor(faction, grid) {
+    this.faction      = faction;
+    this.grid         = grid;
+    this.cash         = STARTING_CASH;
+    this.hqCount      = 2;
+    this.ironDiscount = false;
+    this._incomeAccum = 0;
+    this.incomePerSec = 0;
+    this.population   = 0;
+
+    this.structures = {
+      hqs: 0, barracks: 0, coal_power: 0, wind_power: 0,
+      water_pump: 0, sewage: 0, landfill: 0, incinerator: 0,
+      coal_mine: 0, iron_refinery: 0, gold_mine: 0,
+      bridge_depot: 0, rail_station: 0,
+    };
+
+    this.hasPower    = false;
+    this.hasWater    = false;
+    this.wasteManaged = false;
+    this.waterContaminated = false;
+    this.plagueActive      = false;
+    this.tradePortMult     = 1;
+
+    this._updateIncome();
+  }
+
+  tick(dt) {
+    this._updateUtilityState();
+    this._updatePopulation();
+    this._updateIncome();
+    this._incomeAccum += this.incomePerSec * dt;
+    if (this._incomeAccum >= 1) {
+      const earned = Math.floor(this._incomeAccum);
+      this.cash += earned;
+      this._incomeAccum -= earned;
+    }
+  }
+
+  _updateUtilityState() {
+    const s = this.structures;
+    const coalFuelled = s.coal_power === 0 || s.coal_mine > 0;
+    const powerOut    = (coalFuelled ? s.coal_power * 500 : 0) + s.wind_power * 40;
+    const powerDemand = this.hqCount * 80 + s.barracks * 20;
+    this.hasPower     = powerOut >= powerDemand;
+    this.hasWater     = s.water_pump > 0 && !this.waterContaminated;
+    this.wasteManaged = s.landfill > 0 || s.incinerator > 0;
+    this.ironDiscount = s.iron_refinery > 0;
+  }
+
+  _updatePopulation() {
+    // Count developed zone tiles in this faction's territory
+    let residents = 0;
+    for (let x = 0; x < 82; x++) {
+      const inTerritory = this.faction === 'blue' ? (x >= 1 && x <= 39) : (x >= 42 && x <= 80);
+      if (!inTerritory) continue;
+      for (let z = 0; z < 82; z++) {
+        const t = this.grid.data[x][z];
+        if (t !== T.ZONE_RES && t !== T.ZONE_COM) continue;
+        const level = this.grid.meta[x][z].zoneLevel ?? 0;
+        if (level === 0) continue;
+        const base = t === T.ZONE_RES ? 20 : 8; // commercial has fewer residents
+        residents += base * level;
+      }
+    }
+    this.population = residents;
+  }
+
+  _updateIncome() {
+    if (!this.hasPower) { this.incomePerSec = 0; return; }
+
+    // ── Tax income (primary) ────────────────────────────────────────────
+    let utilMult = 1.0;
+    if (this.hasWater)     utilMult += 0.5;
+    if (this.wasteManaged) utilMult += 0.3;
+    utilMult += this.structures.wind_power * 0.04; // clean energy boosts growth
+    if (this.waterContaminated) utilMult *= 0.1;
+    if (this.plagueActive)      utilMult *= 0.25;
+    if (this.structures.landfill > 0) utilMult *= 0.9; // pollution
+
+    // Commercial zones boost tax rate
+    let commercialBonus = 0;
+    for (let x = 0; x < 82; x++) {
+      const inTerritory = this.faction === 'blue' ? (x >= 1 && x <= 39) : (x >= 42 && x <= 80);
+      if (!inTerritory) continue;
+      for (let z = 0; z < 82; z++) {
+        if (this.grid.data[x][z] === T.ZONE_COM) {
+          commercialBonus += 0.05 * (this.grid.meta[x][z].zoneLevel ?? 0);
+        }
+      }
+    }
+
+    const taxIncome = this.population * TAX_RATE * utilMult * (1 + commercialBonus) * this.tradePortMult;
+
+    // ── Legacy resource income (secondary) ─────────────────────────────
+    const resourceIncome =
+      this.structures.gold_mine    * 400 +
+      this.structures.coal_mine    * 80  +
+      this.structures.iron_refinery * 60 +
+      this.structures.incinerator  * 40;
+
+    // ── HQ base income (minor) ─────────────────────────────────────────
+    const hqIncome = this.hqCount * 120 * utilMult;
+
+    this.incomePerSec = Math.floor(taxIncome + resourceIncome + hqIncome);
+  }
+
+  canAfford(cost) { return this.cash >= cost; }
+
+  spend(cost) {
+    if (!this.canAfford(cost)) return false;
+    this.cash -= cost;
+    return true;
+  }
+
+  applyCost(toolKey, base) {
+    if (this.ironDiscount) {
+      if (['road','hq','barracks','bridge_truck_depot','railway_station'].includes(toolKey)) {
+        return Math.floor(base * 0.7);
+      }
+    }
+    return base;
+  }
+
+  addStructure(type) {
+    const map = {
+      [T.BLUE_HQ]: 'hqs',              [T.YELLOW_HQ]: 'hqs',
+      [T.BLUE_BARRACKS]: 'barracks',   [T.YELLOW_BARRACKS]: 'barracks',
+      [T.BLUE_COAL_POWER]: 'coal_power',[T.YELLOW_COAL_POWER]: 'coal_power',
+      [T.BLUE_WIND]: 'wind_power',      [T.YELLOW_WIND]: 'wind_power',
+      [T.BLUE_WATER_PUMP]: 'water_pump',[T.YELLOW_WATER_PUMP]: 'water_pump',
+      [T.BLUE_SEWAGE]: 'sewage',        [T.YELLOW_SEWAGE]: 'sewage',
+      [T.BLUE_LANDFILL]: 'landfill',    [T.YELLOW_LANDFILL]: 'landfill',
+      [T.BLUE_INCINERATOR]:'incinerator',[T.YELLOW_INCINERATOR]:'incinerator',
+      [T.BLUE_COAL_MINE]: 'coal_mine',  [T.YELLOW_COAL_MINE]: 'coal_mine',
+      [T.BLUE_IRON]: 'iron_refinery',   [T.YELLOW_IRON]: 'iron_refinery',
+      [T.BLUE_GOLD]: 'gold_mine',       [T.YELLOW_GOLD]: 'gold_mine',
+      [T.BLUE_BRIDGE_DEPOT]:'bridge_depot',[T.YELLOW_BRIDGE_DEPOT]:'bridge_depot',
+      [T.BLUE_RAIL_STATION]:'rail_station',[T.YELLOW_RAIL_STATION]:'rail_station',
+    };
+    const key = map[type];
+    if (key && key in this.structures) {
+      this.structures[key]++;
+      if ((type === T.BLUE_HQ || type === T.YELLOW_HQ) && this.hqCount < MAX_HQS) {
+        this.hqCount++;
+      }
+    }
+  }
+}
+
+
+// ===================== units.js =====================
+const UNIT_SPEED   = 4;
+const UNIT_HP      = 100;
+const UNIT_DAMAGE  = 20;
+const COMBAT_RANGE = 0.5;
+
+class Unit {
+  constructor(faction, x, z) {
+    this.faction = faction;
+    this.x = x; this.z = z;
+    this.hp = UNIT_HP; this.maxHp = UNIT_HP;
+    this.combat = false;
+    this.dead   = false;
+    this._targetBridgeZ = null;
+    this._phase = 'march'; // march | cross | hunt
+    this._speed = UNIT_SPEED;
+  }
+
+  tick(dt, grid, enemyUnits, enemyHQs) {
+    if (this.dead) return;
+    this.combat = false;
+
+    for (const e of enemyUnits) {
+      if (e.dead) continue;
+      if (Math.hypot(this.x - e.x, this.z - e.z) < COMBAT_RANGE) {
+        this.combat = true; e.combat = true;
+        this.hp -= UNIT_DAMAGE * dt;
+        e.hp    -= UNIT_DAMAGE * dt;
+        if (this.hp <= 0) this.dead = true;
+        if (e.hp   <= 0) e.dead    = true;
+        return;
+      }
+    }
+    this._move(dt, grid, enemyHQs);
+  }
+
+  _move(dt, grid, enemyHQs) {
+    const step = this._speed * dt;
+
+    if (this._phase === 'march') {
+      const bridgeZ = this._nearestBridgeZ(grid);
+      if (bridgeZ === null) return;
+      this._targetBridgeZ = bridgeZ;
+
+      const edgeX = this.faction === 'blue' ? 39 : 42;
+      const dz = bridgeZ - this.z;
+      if (Math.abs(dz) > 0.3) {
+        this.z += Math.sign(dz) * Math.min(Math.abs(dz), step);
+      } else {
+        const dx = edgeX - this.x;
+        if (Math.abs(dx) > 0.3) {
+          this.x += Math.sign(dx) * Math.min(Math.abs(dx), step);
+        } else {
+          this._phase = 'cross';
+        }
+      }
+    }
+
+    else if (this._phase === 'cross') {
+      if (this._targetBridgeZ === null) { this._phase = 'march'; return; }
+      if (!grid.isPassableCrossing(this._targetBridgeZ)) {
+        this.dead = true; // bridge collapsed under unit
+        return;
+      }
+      const farX = this.faction === 'blue' ? 42 : 39;
+      const dx = farX - this.x;
+      if (Math.abs(dx) > 0.3) {
+        this.x += Math.sign(dx) * Math.min(Math.abs(dx), step);
+      } else {
+        this._phase = 'hunt';
+      }
+    }
+
+    else if (this._phase === 'hunt') {
+      if (enemyHQs.length === 0) return;
+      const nearest = enemyHQs.reduce((a, b) =>
+        Math.hypot(this.x - a.x, this.z - a.z) < Math.hypot(this.x - b.x, this.z - b.z) ? a : b
+      );
+      const dx = nearest.x - this.x, dz = nearest.z - this.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > 0.5) {
+        this.x += (dx / dist) * step;
+        this.z += (dz / dist) * step;
+      } else {
+        nearest.hp -= UNIT_DAMAGE * dt;
+      }
+    }
+  }
+
+  _nearestBridgeZ(grid) {
+    // Scan all chasm tiles for any passable crossing (bridge or temp-bridge)
+    const crossings = grid.allPassableCrossings();
+    if (crossings.length === 0) return null;
+    return crossings.reduce((best, z) =>
+      Math.abs(z - this.z) < Math.abs(best - this.z) ? z : best
+    );
+  }
+}
+
+class UnitManager {
+  constructor() {
+    this.blueUnits   = [];
+    this.yellowUnits = [];
+    this.blueHQs    = [];
+    this.yellowHQs  = [];
+    // Track barracks positions for spawn location
+    this.blueBarracksPos   = [];
+    this.yellowBarracksPos = [];
+  }
+
+  spawnUnit(faction, x, z) {
+    const u = new Unit(faction, x, z);
+    if (faction === 'blue')  this.blueUnits.push(u);
+    else                      this.yellowUnits.push(u);
+    return u;
+  }
+
+  registerHQ(faction, x, z) {
+    const hq = { x, z, hp: 500, maxHp: 500 };
+    if (faction === 'blue') this.blueHQs.push(hq);
+    else                     this.yellowHQs.push(hq);
+    return hq;
+  }
+
+  registerBarracks(faction, x, z) {
+    if (faction === 'blue')  this.blueBarracksPos.push({ x, z });
+    else                      this.yellowBarracksPos.push({ x, z });
+  }
+
+  tick(dt, grid) {
+    for (const u of this.blueUnits)   u.tick(dt, grid, this.yellowUnits, this.yellowHQs);
+    for (const u of this.yellowUnits) u.tick(dt, grid, this.blueUnits,   this.blueHQs);
+    this.blueUnits   = this.blueUnits.filter(u => !u.dead);
+    this.yellowUnits = this.yellowUnits.filter(u => !u.dead);
+    this.blueHQs    = this.blueHQs.filter(h => h.hp > 0);
+    this.yellowHQs  = this.yellowHQs.filter(h => h.hp > 0);
+  }
+
+  get blueCount()   { return this.blueUnits.length;   }
+  get yellowCount() { return this.yellowUnits.length; }
+}
+
+
+// ===================== traffic.js =====================
+const CAR_SPEED  = 6;  // tiles/sec
+const SPAWN_INTERVAL = 3; // seconds between car spawns per entry point
+
+class Car {
+  constructor(x, z, dir, faction) {
+    this.x = x;
+    this.z = z;
+    this.dx = dir === 'right' ? 1 : -1;
+    this.dz = 0;
+    this.faction = faction;
+    this.active = true;
+    this._stuck = 0;
+    this._age   = 0;
+  }
+
+  tick(dt, grid) {
+    if (!this.active) return;
+    this._age += dt;
+
+    const speed = CAR_SPEED * dt;
+    const nx = this.x + this.dx * speed;
+    const nz = this.z + this.dz * speed;
+
+    const tileX = Math.round(nx);
+    const tileZ = Math.round(nz);
+    const ahead = grid.get(tileX, tileZ);
+
+    // Can travel on roads, bridges
+    const passable = (t) => t === T.ROAD || t === T.BRIDGE;
+
+    if (passable(grid.get(Math.round(nx), Math.round(this.z)))) {
+      this.x = nx;
+      this._stuck = 0;
+    } else if (passable(grid.get(Math.round(this.x), Math.round(nz)))) {
+      this.z = nz;
+      this._stuck = 0;
+    } else {
+      // Try turning
+      this._stuck += dt;
+      if (this._stuck > 2) {
+        // Gridlocked — car despawns (counts against income)
+        this.active = false;
+      }
+    }
+
+    // Reached far side or edge — despawn as successful trip
+    if (this.x < 1 || this.x >= GRID_SIZE - 1) {
+      this.active = false;
+    }
+  }
+}
+
+class TrafficManager {
+  constructor(faction, grid, economy) {
+    this.faction  = faction;
+    this.grid     = grid;
+    this.economy  = economy;
+    this.cars     = [];
+    this._timer   = 0;
+    this._entryPoints = this._findEntryPoints();
+  }
+
+  _findEntryPoints() {
+    const pts = [];
+    const xRange = this.faction === 'blue'
+      ? [BLUE_X_START + 1, BLUE_X_END]
+      : [YELLOW_X_START, YELLOW_X_END - 1];
+
+    const edgeX = this.faction === 'blue' ? 1 : YELLOW_X_END;
+    for (let z = 1; z < GRID_SIZE - 1; z++) {
+      if (this.grid.get(edgeX, z) === T.ROAD) pts.push({ x: edgeX, z });
+    }
+    return pts;
+  }
+
+  tick(dt) {
+    // Refresh entry points (player may have built new roads)
+    if (Math.random() < 0.05) this._entryPoints = this._findEntryPoints();
+
+    this._timer += dt;
+    if (this._timer >= SPAWN_INTERVAL && this._entryPoints.length > 0) {
+      this._timer = 0;
+      const pt = this._entryPoints[Math.floor(Math.random() * this._entryPoints.length)];
+      const dir = this.faction === 'blue' ? 'right' : 'left';
+      this.cars.push(new Car(pt.x, pt.z, dir, this.faction));
+    }
+
+    let gridlocked = 0;
+    for (const car of this.cars) {
+      if (!car.active) continue;
+      car.tick(dt, this.grid);
+      if (!car.active && car._stuck > 0) gridlocked++;
+    }
+
+    // Gridlock penalty: reduce income
+    if (gridlocked > 0) {
+      const penalty = gridlocked * 50;
+      this.economy.cash = Math.max(0, this.economy.cash - penalty);
+    }
+
+    this.cars = this.cars.filter(c => c.active);
+  }
+
+  get carCount() { return this.cars.length; }
+}
+
+
+// ===================== train.js =====================
+const SLOT_COSTS = {
+  artillery:     20_000,
+  anti_infantry: 10_000,
+  troops:        15_000,
+  repair:         8_000,
+};
+
+const SLOT_COLORS = {
+  artillery:     '#f33',
+  anti_infantry: '#f80',
+  troops:        '#3c3',
+  repair:        '#88f',
+};
+
+class WarTrain {
+  constructor(faction) {
+    this.faction  = faction;
+    this.pos      = faction === 'blue' ? 0 : 162;
+    this.speed    = 10; // tiles/sec along perimeter
+    this.active   = false;
+    this.derailed = false;
+    this.slots    = []; // max 4
+    this._combatTimer = 0;
+    this._troopTimer  = 0;
+    const [x, z] = perimeterToXZ(this.pos);
+    this.x = x; this.z = z;
+  }
+
+  get maxSlots() { return 4; }
+
+  // Returns array of [x, z, label] for head + each trailing car
+  get carPositions() {
+    const out = [];
+    out.push([...perimeterToXZ(this.pos), 'head']);
+    for (let i = 0; i < this.slots.length; i++) {
+      out.push([...perimeterToXZ(this.pos - (i + 1) * 2.5), this.slots[i]]);
+    }
+    return out;
+  }
+
+  addSlot(type) {
+    if (this.slots.length >= this.maxSlots) return false;
+    this.slots.push(type);
+    return true;
+  }
+
+  tick(dt, grid, units) {
+    if (!this.active || this.derailed) return [];
+
+    this.pos += this.speed * dt;
+    const [fx, fz] = perimeterToXZ(this.pos);
+    const ix = Math.round(fx), iz = Math.round(fz);
+
+    // Derailment check
+    if (grid.get(ix, iz) === T.RAIL_BROKEN) {
+      this.derailed = true;
+      this.x = fx; this.z = fz;
+      return [{ type: 'derail', x: fx, z: fz, radius: 7 }];
+    }
+
+    this.x = fx; this.z = fz;
+    this._combatTimer += dt;
+    this._troopTimer  += dt;
+
+    const events = [];
+
+    if (this._combatTimer >= 0.5) {
+      this._combatTimer = 0;
+      const enemyUnits = this.faction === 'blue' ? units.yellowUnits : units.blueUnits;
+      const enemyHQs   = this.faction === 'blue' ? units.yellowHQs   : units.blueHQs;
+
+      for (const slot of this.slots) {
+        if (slot === 'artillery') {
+          // Long-range: kills units & chips at HQs
+          for (const u of enemyUnits) {
+            if (u.dead) continue;
+            if (Math.hypot(u.x - fx, u.z - fz) < 8) {
+              u.hp -= 40;
+              if (u.hp <= 0) u.dead = true;
+            }
+          }
+          for (const hq of enemyHQs) {
+            if (Math.hypot(hq.x - fx, hq.z - fz) < 6) hq.hp -= 15;
+          }
+          // Also damage bridges within range
+          for (let z = 0; z < GRID_SIZE; z++) {
+            const m = grid.meta[40][z];
+            if (m && m.hp > 0 && Math.hypot(40 - fx, z - fz) < 8) {
+              m.hp -= 5;
+              grid.meta[41][z].hp -= 5;
+              if (m.hp <= 0) grid.destroyBridge(z);
+            }
+          }
+        }
+        if (slot === 'anti_infantry') {
+          for (const u of enemyUnits) {
+            if (u.dead) continue;
+            if (Math.hypot(u.x - fx, u.z - fz) < 5) {
+              u.hp -= 30;
+              if (u.hp <= 0) u.dead = true;
+            }
+          }
+        }
+        if (slot === 'repair') {
+          // Repair broken rail within 3 tiles
+          for (let dx = -3; dx <= 3; dx++) {
+            for (let dz2 = -3; dz2 <= 3; dz2++) {
+              if (grid.get(ix + dx, iz + dz2) === T.RAIL_BROKEN) {
+                grid.set(ix + dx, iz + dz2, T.RAIL);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Troop bay: drop unit every 10s on enemy territory
+    if (this._troopTimer >= 10 && this.slots.includes('troops')) {
+      this._troopTimer = 0;
+      const onEnemySide = this.faction === 'blue' ? fx >= YELLOW_X_START : fx <= BLUE_X_END;
+      if (onEnemySide) {
+        events.push({ type: 'spawn_unit', faction: this.faction, x: ix, z: iz });
+      }
+    }
+
+    return events;
+  }
+}
+
+
+// ===================== ai.js =====================
+const PERSONALITIES = ['turtle', 'rush', 'flanker'];
+
+class AI {
+  constructor(grid, economy, units) {
+    this.grid     = grid;
+    this.economy  = economy;
+    this.units    = units;
+    this.personality = PERSONALITIES[Math.floor(Math.random() * PERSONALITIES.length)];
+    this._phase   = 'economy'; // 'economy' | 'military'
+    this._timer   = 0;
+    this._buildQueue = [];
+    this._blockedBridges = {}; // bridge z → kill count
+    console.log(`[AI] Personality: ${this.personality}`);
+  }
+
+  tick(dt, peacetime, elapsedSec) {
+    this._timer += dt;
+    if (this._timer < 1.0) return; // think every second
+    this._timer = 0;
+
+    if (peacetime) {
+      this._economyPhase(elapsedSec);
+    } else {
+      if (this._phase === 'economy') {
+        this._phase = 'military';
+      }
+      this._militaryPhase(elapsedSec);
+    }
+  }
+
+  _economyPhase(elapsed) {
+    const e = this.economy;
+
+    // Always expand road network so zones can develop
+    this._buildRoadGrid();
+
+    // Truce speed-run: prioritize industrial mines and utilities
+    // Buy HQs the instant we can afford them
+    if (e.hqCount < MAX_HQS && e.canAfford(HQ_COST)) {
+      this._placeHQ();
+      return;
+    }
+
+    // At minute 7 (420s), flip to military preparation
+    if (elapsed >= 420) {
+      this._militaryPrep();
+      return;
+    }
+
+    // Priority build order
+    if (e.structures.gold_mine === 0 && e.canAfford(STRUCTURE_COSTS.gold_mine)) {
+      this._placeBuild('gold_mine'); return;
+    }
+    if (e.structures.coal_power === 0 && e.canAfford(STRUCTURE_COSTS.coal_power)) {
+      this._placeBuild('coal_power'); return;
+    }
+    if (e.structures.iron_refinery === 0 && e.canAfford(STRUCTURE_COSTS.iron_refinery)) {
+      this._placeBuild('iron_refinery'); return;
+    }
+    if (e.structures.coal_mine === 0 && e.canAfford(STRUCTURE_COSTS.coal_mine)) {
+      this._placeBuild('coal_mine'); return;
+    }
+    if (e.structures.water_pump === 0 && e.canAfford(STRUCTURE_COSTS.water_pump)) {
+      this._placeBuild('water_pump'); return;
+    }
+    if (e.structures.sewage === 0 && e.canAfford(STRUCTURE_COSTS.sewage)) {
+      this._placeBuild('sewage'); return;
+    }
+    if (e.structures.wind_power < 3 && e.canAfford(STRUCTURE_COSTS.wind_power)) {
+      this._placeBuild('wind_power'); return;
+    }
+  }
+
+  _militaryPrep() {
+    const e = this.economy;
+    // Max out barracks
+    if (e.structures.barracks < 5 && e.canAfford(STRUCTURE_COSTS.barracks)) {
+      this._placeBuild('barracks');
+    }
+  }
+
+  _militaryPhase(elapsed) {
+    this._militaryPrep();
+
+    // Spawn units from barracks
+    if (this.economy.structures.barracks > 0 && this.economy.canAfford(500)) {
+      this._spawnUnit();
+      this.economy.cash -= 500;
+    }
+
+    // Frustration rerouting: if a bridge keeps killing our units, avoid it
+    this._updateFrustration();
+
+    // Flanker: deploy bridge trucks on outer flanks
+    if (this.personality === 'flanker' && this.economy.canAfford(STRUCTURE_COSTS.bridge_truck_depot)) {
+      this._placeBuild('bridge_truck_depot');
+    }
+
+    // Tactical sabotage: if enemy is overwhelming our side, blow bridges
+    const enemyOnOurSide = this.units.blueUnits.filter(u => u.x >= YELLOW_X_START).length;
+    if (enemyOnOurSide > 10) {
+      for (const z of BRIDGE_LANES) {
+        if (this.grid.bridgeIntact(z)) {
+          this.grid.destroyBridge(z);
+        }
+      }
+    }
+  }
+
+  _updateFrustration() {
+    // Count dead yellow units near each bridge
+    // (simplified: if we have fewer units than expected, assume blockage)
+    for (const z of BRIDGE_LANES) {
+      if (!this.grid.bridgeIntact(z)) {
+        this._blockedBridges[z] = (this._blockedBridges[z] || 0) + 1;
+      }
+    }
+  }
+
+  _buildRoadGrid() {
+    if (this._roadGridDone) return;          // build the street grid only once
+    const roadCost = STRUCTURE_COSTS.road;
+    let budget = 15;
+    let placedAny = false;
+    // Horizontal streets every ~8 z-tiles
+    for (let z = 8; z < GRID_SIZE - 2; z += 8) {
+      for (let x = YELLOW_X_START; x <= YELLOW_X_END - 2; x++) {
+        if (budget <= 0 || !this.economy.canAfford(roadCost)) { this._aiDirty = placedAny; return; }
+        if (this.grid.get(x, z) === T.EMPTY) {
+          this.grid.set(x, z, T.ROAD);
+          this.economy.cash -= roadCost;
+          budget--; placedAny = true;
+        }
+      }
+    }
+    // Vertical connectors every ~7 x-tiles
+    for (let x = YELLOW_X_START + 7; x <= YELLOW_X_END - 3; x += 7) {
+      for (let z = 2; z < GRID_SIZE - 2; z++) {
+        if (budget <= 0 || !this.economy.canAfford(roadCost)) { this._aiDirty = placedAny; return; }
+        if (this.grid.get(x, z) === T.EMPTY) {
+          this.grid.set(x, z, T.ROAD);
+          this.economy.cash -= roadCost;
+          budget--; placedAny = true;
+        }
+      }
+    }
+    // Reached the end of both loops without exhausting budget → grid complete.
+    if (budget > 0) this._roadGridDone = true;
+    this._aiDirty = placedAny;
+  }
+
+  _placeHQ() {
+    const x = this._pickX('hq');
+    const z = this._pickZ();
+    if (this.grid.get(x, z) === 0) {
+      const type = T.YELLOW_HQ;
+      this.grid.set(x, z, type);
+      this.economy.spend(HQ_COST);
+      this.economy.addStructure(type);
+      this.units.registerHQ('yellow', x, z);
+      this._aiDirty = true;
+    }
+  }
+
+  _placeBuild(toolKey) {
+    const typeMap = {
+      gold_mine:        T.YELLOW_GOLD,
+      coal_power:       T.YELLOW_COAL_POWER,
+      iron_refinery:    T.YELLOW_IRON,
+      coal_mine:        T.YELLOW_COAL_MINE,
+      water_pump:       T.YELLOW_WATER_PUMP,
+      sewage:           T.YELLOW_SEWAGE,
+      wind_power:       T.YELLOW_WIND,
+      barracks:         T.YELLOW_BARRACKS,
+      bridge_truck_depot: T.YELLOW_BRIDGE_DEPOT,
+    };
+    const type = typeMap[toolKey];
+    if (!type) return;
+
+    const cost = STRUCTURE_COSTS[toolKey];
+    if (!this.economy.canAfford(cost)) return;
+
+    const x = this._pickX(toolKey);
+    const z = this._pickZ();
+    if (this.grid.get(x, z) === 0) {
+      this.grid.set(x, z, type);
+      this.economy.spend(cost);
+      this.economy.addStructure(type);
+
+      // Water pump must be at chasm edge
+      if (toolKey === 'water_pump') {
+        this.grid.set(YELLOW_X_START, z, type);
+      }
+      this._aiDirty = true;
+    }
+  }
+
+  _spawnUnit() {
+    const x = YELLOW_X_START + 5;
+    const z = Math.floor(Math.random() * (GRID_SIZE - 2)) + 1;
+    this.units.spawnUnit('yellow', x, z);
+  }
+
+  _pickX(toolKey) {
+    if (this.personality === 'rush') {
+      return YELLOW_X_START + 2; // HQs near chasm
+    }
+    if (this.personality === 'turtle') {
+      return YELLOW_X_END - 5; // HQs deep in corner
+    }
+    // Default: scattered
+    return YELLOW_X_START + Math.floor(Math.random() * 30) + 2;
+  }
+
+  _pickZ() {
+    return Math.floor(Math.random() * (GRID_SIZE - 10)) + 5;
+  }
+}
+
+
+// ===================== bridge-truck.js =====================
+const BRIDGE_TRUCK_SPEED  = 3;
+const DEPLOY_TIME  = 3.0;
+const PACK_TIME    = 2.0;
+
+class BridgeTruck {
+  constructor(faction, x, z, isRailVariant = false) {
+    this.id            = Math.random().toString(36).slice(2, 8);
+    this.faction       = faction;
+    this.x             = x;
+    this.z             = z;
+    this.isRailVariant = isRailVariant;
+    this.state         = 'driving'; // driving | deploying | deployed | packing | done
+    this._timer        = 0;
+    this._bridgeZ      = null;
+    this._railTarget   = null; // [x, z] for rail-repair variant
+    this.active        = true;
+  }
+
+  setRailTarget(x, z) {
+    this._railTarget = [x, z];
+  }
+
+  tick(dt, grid) {
+    if (!this.active) return;
+    if (this.state === 'driving')   this._doDrive(dt, grid);
+    if (this.state === 'deploying') { this._timer += dt; if (this._timer >= DEPLOY_TIME)  { this._timer = 0; this._doDeploy(grid); } }
+    if (this.state === 'packing')   { this._timer += dt; if (this._timer >= PACK_TIME)    { this._timer = 0; this._doPack(grid);   } }
+  }
+
+  _doDrive(dt, grid) {
+    const step = BRIDGE_TRUCK_SPEED * dt;
+
+    if (this.isRailVariant && this._railTarget) {
+      const [tx, tz] = this._railTarget;
+      const dx = tx - this.x, dz = tz - this.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist < 0.6) {
+        grid.repairRail(tx, tz);
+        this.state = 'done';
+        this.active = false;
+      } else {
+        this.x += (dx / dist) * step;
+        this.z += (dz / dist) * step;
+      }
+      return;
+    }
+
+    // Standard bridge truck — drive toward chasm edge horizontally
+    const edgeX = this.faction === 'blue' ? BLUE_X_END : YELLOW_X_START;
+    const dx = edgeX - this.x;
+    if (Math.abs(dx) > 0.4) {
+      this.x += Math.sign(dx) * step;
+    } else {
+      this.x = edgeX;
+      this._bridgeZ = Math.round(this.z);
+      // Don't deploy on existing bridge lanes — find open slot
+      while (grid.isPassableCrossing(this._bridgeZ) && this._bridgeZ < GRID_SIZE - 2) {
+        this._bridgeZ++;
+      }
+      this.state = 'deploying';
+      this._timer = 0;
+    }
+  }
+
+  _doDeploy(grid) {
+    if (this._bridgeZ === null) { this.state = 'done'; this.active = false; return; }
+    // Place temporary bridges across the 2-tile chasm
+    grid.set(CHASM_X_START, this._bridgeZ, T.TEMP_BRIDGE);
+    grid.set(CHASM_X_END,   this._bridgeZ, T.TEMP_BRIDGE);
+    this.state = 'deployed';
+  }
+
+  packUp(grid) {
+    if (this.state !== 'deployed') return;
+    this.state = 'packing';
+    this._timer = 0;
+  }
+
+  _doPack(grid) {
+    if (this._bridgeZ !== null) {
+      grid.set(CHASM_X_START, this._bridgeZ, T.WATER);
+      grid.set(CHASM_X_END,   this._bridgeZ, T.WATER);
+      this._bridgeZ = null;
+    }
+    this.state = 'done';
+    this.active = false;
+  }
+}
+
+class BridgeTruckManager {
+  constructor() {
+    this.trucks = [];
+  }
+
+  spawn(faction, x, z, isRailVariant = false, railTarget = null) {
+    const t = new BridgeTruck(faction, x, z, isRailVariant);
+    if (railTarget) t.setRailTarget(...railTarget);
+    this.trucks.push(t);
+    return t;
+  }
+
+  tick(dt, grid) {
+    for (const t of this.trucks) t.tick(dt, grid);
+    // Keep deployed trucks alive even if "done" isn't set; prune truly inactive ones
+    this.trucks = this.trucks.filter(t => t.state !== 'done');
+  }
+
+  getTruckNear(wx, wz, radius = 1.5) {
+    for (const t of this.trucks) {
+      if (Math.hypot(t.x - wx, t.z - wz) < radius) return t;
+    }
+    return null;
+  }
+
+  // AI helper: find first broken perimeter rail tile
+  findBrokenRail(grid) {
+    for (let x = 0; x < 82; x++) {
+      if (grid.get(x, 0) === T.RAIL_BROKEN) return [x, 0];
+      if (grid.get(x, 81) === T.RAIL_BROKEN) return [x, 81];
+    }
+    for (let z = 0; z < 82; z++) {
+      if (grid.get(0, z) === T.RAIL_BROKEN) return [0, z];
+      if (grid.get(81, z) === T.RAIL_BROKEN) return [81, z];
+    }
+    return null;
+  }
+}
+
+
+// ===================== waste.js =====================
+const WASTE_TRUCK_SPEED      = 4;
+const WASTE_SPAWN_INTERVAL   = 15;
+const GRIDLOCK_TIMEOUT = 4;
+const PLAGUE_CLEAR     = 20;
+
+class GarbageTruck {
+  constructor(x, z) {
+    this.x     = x;
+    this.z     = z;
+    this.active = true;
+    this._stuck = 0;
+    this._age   = 0;
+    // Random walk direction
+    this._dirX = (Math.random() < 0.5 ? 1 : -1);
+    this._dirZ = 0;
+    this._turnTimer = 0;
+  }
+
+  tick(dt, grid) {
+    if (!this.active) return false;
+    this._age += dt;
+    if (this._age > 35) { this.active = false; return false; }
+
+    this._turnTimer += dt;
+    if (this._turnTimer > 3) {
+      this._turnTimer = 0;
+      // Randomise direction biased toward remaining on roads
+      const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+      const onRoad = dirs.filter(([dx,dz]) => {
+        const t = grid.get(Math.round(this.x)+dx, Math.round(this.z)+dz);
+        return t === T.ROAD || t === T.BRIDGE;
+      });
+      if (onRoad.length > 0) {
+        const [dx, dz] = onRoad[Math.floor(Math.random() * onRoad.length)];
+        this._dirX = dx; this._dirZ = dz;
+      }
+    }
+
+    const step = WASTE_TRUCK_SPEED * dt;
+    const nx = this.x + this._dirX * step;
+    const nz = this.z + this._dirZ * step;
+    const t  = grid.get(Math.round(nx), Math.round(nz));
+
+    if (t === T.ROAD || t === T.BRIDGE) {
+      this.x = nx; this.z = nz;
+      this._stuck = 0;
+    } else {
+      this._stuck += dt;
+      if (this._stuck > GRIDLOCK_TIMEOUT) {
+        // Plague trigger
+        this.active = false;
+        return true;
+      }
+    }
+    return false;
+  }
+}
+
+class WasteManager {
+  constructor(faction, grid, economy) {
+    this.faction     = faction;
+    this.grid        = grid;
+    this.economy     = economy;
+    this.trucks      = [];
+    this._spawnTimer = 0;
+    this.plagueActive = false;
+    this._plagueTimer = 0;
+    this._noMgmtTimer = 0;
+  }
+
+  tick(dt) {
+    const s = this.economy.structures;
+    const hasManagement = s.landfill > 0 || s.incinerator > 0;
+
+    if (!hasManagement) {
+      // Accumulate waste — plague after 30s without any management
+      this._noMgmtTimer += dt;
+      if (this._noMgmtTimer > 30) {
+        this.plagueActive = true;
+      }
+    } else {
+      this._noMgmtTimer = 0;
+
+      // Spawn garbage trucks from management buildings
+      this._spawnTimer += dt;
+      if (this._spawnTimer >= WASTE_SPAWN_INTERVAL) {
+        this._spawnTimer = 0;
+        this._spawnTruck();
+      }
+
+      // Tick trucks
+      let plagueTrigger = false;
+      for (const t of this.trucks) {
+        if (t.tick(dt, this.grid)) plagueTrigger = true;
+      }
+      this.trucks = this.trucks.filter(t => t.active);
+
+      if (plagueTrigger) {
+        this.plagueActive = true;
+        this._plagueTimer = 0;
+      } else if (this.plagueActive) {
+        this._plagueTimer += dt;
+        if (this._plagueTimer > PLAGUE_CLEAR) {
+          this.plagueActive = false;
+          this._plagueTimer = 0;
+        }
+      }
+    }
+
+    this.economy.plagueActive = this.plagueActive;
+  }
+
+  _spawnTruck() {
+    // Spawn at a road tile in territory
+    const baseX = this.faction === 'blue' ? 5 : 72;
+    for (let attempts = 0; attempts < 10; attempts++) {
+      const z = Math.floor(Math.random() * (GRID_SIZE - 10)) + 5;
+      if (this.grid.get(baseX, z) === T.ROAD) {
+        this.trucks.push(new GarbageTruck(baseX, z));
+        return;
+      }
+    }
+    // Fallback: spawn anyway at approximate location
+    this.trucks.push(new GarbageTruck(baseX, Math.floor(GRID_SIZE / 2)));
+  }
+}
+
+
+// ===================== edge-nodes.js =====================
+const CAPTURE_RANGE = 5;
+const CAPTURE_TIME  = 5;
+
+class EdgeNode {
+  constructor(x, z, defaultOwner, buff) {
+    this.x     = x;
+    this.z     = z;
+    this.owner = defaultOwner; // 'blue' | 'yellow'
+    this.buff  = buff;         // 'trade_port' | 'bridge_armor'
+    this._capTimer  = 0;
+    this._capBy     = null;
+    this.captureProgress = 0;  // 0..1 for UI
+  }
+
+  tick(dt, blueUnits, yellowUnits) {
+    const blueNear   = blueUnits.filter(u =>
+      !u.dead && Math.hypot(u.x - this.x, u.z - this.z) < CAPTURE_RANGE).length;
+    const yellowNear = yellowUnits.filter(u =>
+      !u.dead && Math.hypot(u.x - this.x, u.z - this.z) < CAPTURE_RANGE).length;
+
+    const challenger = blueNear > yellowNear ? 'blue'
+                     : yellowNear > blueNear  ? 'yellow'
+                     : null;
+
+    if (challenger && challenger !== this.owner) {
+      if (this._capBy === challenger) {
+        this._capTimer += dt;
+        this.captureProgress = Math.min(1, this._capTimer / CAPTURE_TIME);
+        if (this._capTimer >= CAPTURE_TIME) {
+          this.owner = challenger;
+          this._capTimer = 0;
+          this._capBy = null;
+          this.captureProgress = 0;
+        }
+      } else {
+        this._capBy    = challenger;
+        this._capTimer = 0;
+        this.captureProgress = 0;
+      }
+    } else {
+      this._capTimer = 0;
+      this._capBy    = null;
+      this.captureProgress = 0;
+    }
+  }
+}
+
+class EdgeNodeManager {
+  constructor() {
+    // Left border node: trade port (3× income)
+    this.leftNode  = new EdgeNode(0, 41, 'blue',   'trade_port');
+    // Right border node: bridge armor (+50% bridge HP on repair, harder to destroy)
+    this.rightNode = new EdgeNode(81, 41, 'yellow', 'bridge_armor');
+    this.nodes     = [this.leftNode, this.rightNode];
+  }
+
+  tick(dt, blueUnits, yellowUnits) {
+    for (const n of this.nodes) n.tick(dt, blueUnits, yellowUnits);
+  }
+
+  tradePortMult(faction) {
+    for (const n of this.nodes) {
+      if (n.buff === 'trade_port' && n.owner === faction) return 3;
+    }
+    return 1;
+  }
+
+  hasBridgeArmor(faction) {
+    for (const n of this.nodes) {
+      if (n.buff === 'bridge_armor' && n.owner === faction) return true;
+    }
+    return false;
+  }
+}
+
+
+// ===================== freight.js =====================
+const FREIGHT_TRUCK_SPEED    = 2;
+const FREIGHT_SPAWN_INTERVAL = 20;
+const ROAD_INCOME    = 2_000;
+const RAIL_INCOME    = 3_000; // rail freight more profitable, no congestion
+
+class FreightTruck {
+  constructor(faction, x, z) {
+    this.faction = faction;
+    this.x       = x;
+    this.z       = z;
+    this.active  = true;
+    this._age    = 0;
+    this._targetX = faction === 'blue' ? 1 : YELLOW_X_END - 1;
+  }
+
+  tick(dt, grid) {
+    if (!this.active) return false;
+    this._age += dt;
+    if (this._age > 60) { this.active = false; return false; }
+
+    const step = FREIGHT_TRUCK_SPEED * dt;
+    const dx   = this._targetX - this.x;
+
+    if (Math.abs(dx) < 0.5) {
+      this.active = false;
+      return true; // earned income
+    }
+
+    const nx   = this.x + Math.sign(dx) * step;
+    const tile = grid.get(Math.round(nx), Math.round(this.z));
+    // Freight trucks can roll over any non-water tile
+    if (tile !== T.WATER && tile !== T.BRIDGE_BROKEN) {
+      this.x = nx;
+    }
+    return false;
+  }
+}
+
+class FreightManager {
+  constructor(faction, grid, economy) {
+    this.faction  = faction;
+    this.grid     = grid;
+    this.economy  = economy;
+    this.trucks   = [];
+    this._timer   = 0;
+  }
+
+  tick(dt) {
+    const s = this.economy.structures;
+    const mines = s.coal_mine + s.iron_refinery + s.gold_mine;
+    if (mines === 0) return;
+
+    this._timer += dt;
+    const interval = FREIGHT_SPAWN_INTERVAL / Math.max(1, mines);
+
+    if (this._timer >= interval) {
+      this._timer = 0;
+
+      if (s.rail_station > 0) {
+        // Rail-freight: skip road trucks, instant income
+        this.economy.cash += RAIL_INCOME * mines;
+      } else {
+        this._spawnTruck();
+      }
+    }
+
+    for (const t of this.trucks) {
+      if (t.tick(dt, this.grid)) {
+        this.economy.cash += ROAD_INCOME;
+      }
+    }
+    this.trucks = this.trucks.filter(t => t.active);
+  }
+
+  _spawnTruck() {
+    const x = this.faction === 'blue' ? 20 : 62;
+    const z = Math.floor(Math.random() * (GRID_SIZE - 10)) + 5;
+    this.trucks.push(new FreightTruck(this.faction, x, z));
+  }
+
+  get activeTrucks() { return this.trucks; }
+}
+
+
+// ===================== renderer3d.js =====================
+
+const HALF = GRID_SIZE / 2;
+
+// ─── Material / geometry caches ──────────────────────────────────────────────
+const _mats  = {};
+const _geos  = {};
+
+function mat(hex) {
+  if (!_mats[hex]) _mats[hex] = new THREE.MeshPhongMaterial({
+    color: hex, shininess: 18, specular: new THREE.Color(0x111122)
+  });
+  return _mats[hex];
+}
+
+function matT(hex, opacity) {
+  const key = hex + '_' + opacity;
+  if (!_mats[key]) _mats[key] = new THREE.MeshPhongMaterial({
+    color: hex, transparent: true, opacity, shininess: 8
+  });
+  return _mats[key];
+}
+
+function box(w, h, d) {
+  const key = `${w},${h},${d}`;
+  if (!_geos[key]) _geos[key] = new THREE.BoxGeometry(w, h, d);
+  return _geos[key];
+}
+
+function mesh(w, h, d, color) {
+  return new THREE.Mesh(box(w, h, d), mat(color));
+}
+
+// ─── Zone development heights ─────────────────────────────────────────────────
+// Returns [w, h, d, color] for a zone tile at dev level 0-3
+// Deterministic pseudo-random in [0,1) from tile coords + salt
+function _tileRand(x, z, salt = 0) {
+  let h = (x * 73856093) ^ (z * 19349663) ^ (salt * 83492791);
+  h = (h ^ (h >>> 13)) >>> 0;
+  return (h % 100000) / 100000;
+}
+
+function zoneDef(tileType, level, x = 0, z = 0) {
+  if (level === 0) return BUILD_DEF[tileType]; // undeveloped slab
+  const res = tileType === T.ZONE_RES;
+  const com = tileType === T.ZONE_COM;
+
+  // Per-tile variety: pick a palette swatch + jitter height/footprint
+  const v  = _tileRand(x, z, 1);
+  const v2 = _tileRand(x, z, 2);
+  const hJit = 0.8 + v * 0.5;       // 0.8–1.3 height multiplier
+  const wJit = 0.85 + v2 * 0.25;    // slight footprint variety
+
+  let base;
+  if (res) {
+    const palette = ['#d4c87a', '#c8b840', '#e8d060', '#cdbb6a', '#b8a850', '#ddca78'];
+    const defs = [
+      { w:0.55, h:1.2, d:0.55 },
+      { w:0.6,  h:2.8, d:0.6  },
+      { w:0.5,  h:5.5, d:0.5  },
+    ];
+    base = { ...defs[level - 1], c: palette[Math.floor(v * palette.length)] };
+  } else if (com) {
+    const palette = ['#6699cc', '#4477bb', '#55aaee', '#5588c8', '#3f6fb0', '#66aadd'];
+    const defs = [
+      { w:0.72, h:1.5, d:0.72 },
+      { w:0.72, h:3.5, d:0.72 },
+      { w:0.62, h:7.0, d:0.62 },
+    ];
+    base = { ...defs[level - 1], c: palette[Math.floor(v * palette.length)], glass: level >= 2 };
+  } else {
+    const palette = ['#887744', '#776633', '#665522', '#7a6a3a', '#8a7748'];
+    const defs = [
+      { w:0.9, h:0.8, d:0.9 },
+      { w:0.9, h:1.2, d:0.9 },
+      { w:0.9, h:1.8, d:0.9 },
+    ];
+    base = { ...defs[level - 1], c: palette[Math.floor(v * palette.length)] };
+  }
+  base.h *= hJit;
+  base.w *= wJit;
+  base.d *= wJit;
+  return base;
+}
+
+class Renderer3D {
+  constructor(canvas, grid) {
+    this.canvas  = canvas;
+    this.grid    = grid;
+    this._dirty  = true;
+    this.explosions = [];
+
+    // ── Scene ──────────────────────────────────────────────────────────────
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color('#1a2035');
+    this.scene.fog = new THREE.Fog('#1a2035', 180, 360);
+
+    // ── Renderer ───────────────────────────────────────────────────────────
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this._resize();
+
+    // ── Camera ─────────────────────────────────────────────────────────────
+    this.camera = new THREE.PerspectiveCamera(45, canvas.width / canvas.height, 0.1, 500);
+    this.camera.position.set(HALF, 55, HALF + 70);
+    this.camera.lookAt(HALF, 0, HALF);
+
+    // ── Controls ───────────────────────────────────────────────────────────
+    this.controls = new OrbitControls(this.camera, canvas);
+    this.controls.target.set(HALF, 0, HALF);
+    this.controls.minPolarAngle = Math.PI / 8;
+    this.controls.maxPolarAngle = Math.PI / 2.1;
+    this.controls.minDistance   = 15;
+    this.controls.maxDistance   = 250;
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.08;
+    this.controls.update();
+
+    // ── Lights ─────────────────────────────────────────────────────────────
+    this._ambient = new THREE.AmbientLight(0x8090b0, 1.4);
+    this.scene.add(this._ambient);
+    const sun = new THREE.DirectionalLight(0xfff0cc, 2.0);
+    sun.position.set(40, 100, 60);
+    sun.castShadow = true;
+    sun.shadow.camera.near = 0.5;
+    sun.shadow.camera.far  = 300;
+    sun.shadow.camera.left = sun.shadow.camera.bottom = -100;
+    sun.shadow.camera.right= sun.shadow.camera.top    = 100;
+    sun.shadow.mapSize.width = sun.shadow.mapSize.height = 2048;
+    sun.shadow.bias = -0.0003;
+    this._sun = sun;
+    this.scene.add(sun);
+    this._hemi = new THREE.HemisphereLight(0x5577aa, 0x443322, 0.8);
+    this.scene.add(this._hemi);
+    const rim = new THREE.DirectionalLight(0x3355aa, 0.4);
+    rim.position.set(80, 20, -10);
+    this.scene.add(rim);
+    this._dayT = 0; // day/night phase accumulator
+
+    // ── Static terrain groups ──────────────────────────────────────────────
+    this._groundGroup   = new THREE.Group();
+    this._buildingGroup = new THREE.Group();
+    this._addTarget = this._buildingGroup;
+    this._scene_statics = new THREE.Group();
+    this._scene_statics.add(this._groundGroup, this._buildingGroup);
+    this.scene.add(this._scene_statics);
+
+    // ── Dynamic groups (rebuilt each frame) ───────────────────────────────
+    this._dynGroup      = new THREE.Group(); // units, vehicles, trains
+    this._explosionGroup = new THREE.Group(); // persists between frames
+    this.scene.add(this._dynGroup);
+    this.scene.add(this._explosionGroup);
+
+    // ── Turbine blade refs for animation ──────────────────────────────────
+    this._turbineBlades = [];
+
+    this._buildTerrain();
+    window.addEventListener('resize', () => this._resize());
+  }
+
+  _resize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    this.renderer.setSize(w, h);
+    if (this.camera) {
+      this.camera.aspect = w / h;
+      this.camera.updateProjectionMatrix();
+    }
+  }
+
+  // ── Ground + chasm + territory planes ────────────────────────────────────
+  _buildTerrain() {
+    this._groundGroup.clear();
+
+    // Per-tile ground blocks — each tile's TOP surface sits exactly at its
+    // elevation, so buildings (which lift to the same elevation) sit flush.
+    this._addTiledGround();
+
+    // Chasm gorge — sunken water + rock walls
+    const chasmDepth = 4;
+    const water = new THREE.Mesh(
+      new THREE.PlaneGeometry(2, GRID_SIZE),
+      new THREE.MeshPhongMaterial({ color: '#1a5090', shininess: 150, specular: new THREE.Color(0x4488cc) })
+    );
+    water.rotation.x = -Math.PI / 2;
+    water.position.set(CHASM_X_START + 1, -chasmDepth, HALF);
+    this._groundGroup.add(water);
+
+    // Rock walls on each side of chasm
+    const rockMat = new THREE.MeshPhongMaterial({ color: '#3a3840', shininess: 4 });
+    const wallGeo = new THREE.BoxGeometry(0.6, chasmDepth, GRID_SIZE);
+    const wallL = new THREE.Mesh(wallGeo, rockMat);
+    wallL.position.set(CHASM_X_START - 0.0, -chasmDepth / 2, HALF);
+    this._groundGroup.add(wallL);
+    const wallR = new THREE.Mesh(wallGeo, rockMat);
+    wallR.position.set(CHASM_X_END + 1 + 0.0, -chasmDepth / 2, HALF);
+    this._groundGroup.add(wallR);
+
+    // Chasm floor (rock bed)
+    const chasmBed = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.6, GRID_SIZE),
+      new THREE.MeshPhongMaterial({ color: '#0f1520', shininess: 2 })
+    );
+    chasmBed.rotation.x = -Math.PI / 2;
+    chasmBed.position.set(CHASM_X_START + 1, -chasmDepth - 0.01, HALF);
+    this._groundGroup.add(chasmBed);
+
+    // Perimeter rail strip
+    const railMat = mat('#3a2810');
+    const addRailStrip = (px, pz, w, d) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.06, d), railMat);
+      m.position.set(px, 0.03, pz);
+      m.receiveShadow = true;
+      this._groundGroup.add(m);
+    };
+    addRailStrip(HALF, 0.5,              GRID_SIZE, 1);
+    addRailStrip(HALF, GRID_SIZE - 0.5,  GRID_SIZE, 1);
+    addRailStrip(0.5,  HALF,             1, GRID_SIZE);
+    addRailStrip(GRID_SIZE - 0.5, HALF,  1, GRID_SIZE);
+
+    this._buildParcelOverlay();
+    this._addTrees();
+  }
+
+  // Scatter low-poly trees on empty ground within each territory.
+  _addTrees() {
+    if (this._treeGroup) this._groundGroup.remove(this._treeGroup);
+    this._treeGroup = new THREE.Group();
+    const trunkMat = new THREE.MeshPhongMaterial({ color: '#5b3a1e', shininess: 2 });
+    const leafMats = [
+      new THREE.MeshPhongMaterial({ color: '#2f6b2a', shininess: 4 }),
+      new THREE.MeshPhongMaterial({ color: '#3a7d33', shininess: 4 }),
+      new THREE.MeshPhongMaterial({ color: '#27602a', shininess: 4 }),
+    ];
+    const ranges = [[1, BLUE_X_END], [YELLOW_X_START, GRID_SIZE - 2]];
+    for (const [x0, x1] of ranges) {
+      for (let x = x0; x <= x1; x++) {
+        for (let z = 1; z < GRID_SIZE - 1; z++) {
+          if (this.grid.data[x][z] !== T.EMPTY) continue;       // only bare ground
+          // deterministic sparse scatter (~10% of empty tiles)
+          if (_tileRand(x, z, 7) > 0.10) continue;
+          const e = this.grid.elevation(x, z);
+          const jx = (_tileRand(x, z, 8) - 0.5) * 0.6;
+          const jz = (_tileRand(x, z, 9) - 0.5) * 0.6;
+          const scale = 0.7 + _tileRand(x, z, 10) * 0.7;
+          const cx = x + 0.5 + jx, cz = z + 0.5 + jz;
+
+          const trunk = new THREE.Mesh(box(0.08, 0.4 * scale, 0.08), trunkMat);
+          trunk.position.set(cx, e + 0.2 * scale, cz);
+          trunk.castShadow = true;
+          this._treeGroup.add(trunk);
+
+          const leafMat = leafMats[Math.floor(_tileRand(x, z, 11) * leafMats.length)];
+          // two stacked cones-ish (boxes) for a conifer silhouette
+          const l1 = new THREE.Mesh(box(0.5 * scale, 0.5 * scale, 0.5 * scale), leafMat);
+          l1.rotation.y = Math.PI / 4;
+          l1.position.set(cx, e + 0.55 * scale, cz);
+          l1.castShadow = true;
+          this._treeGroup.add(l1);
+          const l2 = new THREE.Mesh(box(0.34 * scale, 0.4 * scale, 0.34 * scale), leafMat);
+          l2.rotation.y = Math.PI / 4;
+          l2.position.set(cx, e + 0.9 * scale, cz);
+          l2.castShadow = true;
+          this._treeGroup.add(l2);
+        }
+      }
+    }
+    this._groundGroup.add(this._treeGroup);
+  }
+
+  // Build a vertex-displaced ground mesh over x∈[x0..x1] using grid.elevation.
+  // Vertices land exactly on tile centers so building bases sit flush on the surface.
+  // Per-tile ground: one box per tile, top face exactly at elevation(x,z).
+  _addTiledGround() {
+    const blueLo = new THREE.Color('#2f4a26'), blueHi = new THREE.Color('#3a5a30');
+    const yelLo  = new THREE.Color('#46351a'), yelHi  = new THREE.Color('#574326');
+    const ranges = [
+      [1, BLUE_X_END, blueLo, blueHi],
+      [YELLOW_X_START, GRID_SIZE - 2, yelLo, yelHi],
+    ];
+    const geo = box(1, 1, 1); // unit cube, scaled per tile via matrix-free position+scale
+    const groundMatCache = {};
+    const groundMat = (col) => {
+      const key = Math.round(col.r*255)+','+Math.round(col.g*255)+','+Math.round(col.b*255);
+      if (!groundMatCache[key]) groundMatCache[key] = new THREE.MeshPhongMaterial({ color: col, shininess: 2 });
+      return groundMatCache[key];
+    };
+    for (const [x0, x1, cLo, cHi] of ranges) {
+      for (let x = x0; x <= x1; x++) {
+        for (let z = 1; z < GRID_SIZE - 1; z++) {
+          const h = this.grid.elevation(x, z);
+          const thickness = h + 1.0;           // extend below 0 so no gaps on slopes
+          const f = Math.min(1, h / 4);
+          const col = cLo.clone().lerp(cHi, f);
+          const m = new THREE.Mesh(geo, groundMat(col));
+          m.scale.set(1.0, thickness, 1.0);
+          m.position.set(x + 0.5, h - thickness / 2, z + 0.5);
+          m.receiveShadow = true;
+          this._groundGroup.add(m);
+        }
+      }
+    }
+  }
+
+
+  // Parcel ownership overlay — unowned Blue parcels shown as faint red hatching,
+  // owned-but-empty parcels faint white edges. Rebuilt when ownership changes.
+  _buildParcelOverlay() {
+    if (this._parcelGroup) this._scene_statics.remove(this._parcelGroup);
+    this._parcelGroup = new THREE.Group();
+    const P = this.grid.PARCELS;
+    const lo = 1, hi = BLUE_X_END, span = hi - lo + 1;
+    const pw = span / P, pd = GRID_SIZE / P;
+    for (let col = 0; col < P; col++) {
+      for (let row = 0; row < P; row++) {
+        const owned = this.grid.owned.blue.has(col + ',' + row);
+        if (owned) continue; // only mark buyable land
+        const cx = lo + col * pw + pw / 2;
+        const cz = row * pd + pd / 2;
+        const slab = new THREE.Mesh(
+          new THREE.PlaneGeometry(pw - 0.3, pd - 0.3),
+          new THREE.MeshBasicMaterial({ color: '#aa3333', transparent: true, opacity: 0.18 })
+        );
+        slab.rotation.x = -Math.PI / 2;
+        slab.position.set(cx - 0.5, this.grid.elevation(Math.round(cx), Math.round(cz)) + 0.15, cz - 0.5);
+        this._parcelGroup.add(slab);
+      }
+    }
+    this._scene_statics.add(this._parcelGroup);
+  }
+
+  // ── Rebuild all building meshes from grid state ───────────────────────────
+  _rebuildBuildings() {
+    this._buildingGroup.clear();
+    this._turbineBlades = [];
+
+    for (let x = 0; x < GRID_SIZE; x++) {
+      for (let z = 0; z < GRID_SIZE; z++) {
+        const t = this.grid.data[x][z];
+        if (t === T.EMPTY || t === T.WATER) continue;
+
+        // Per-tile group lifted to the terrain elevation at this tile
+        const tg = new THREE.Group();
+        tg.position.y = this.grid.elevation(x, z);
+        this._buildingGroup.add(tg);
+        this._addTarget = tg;
+
+        // Power lines: pole + wires strung to adjacent power-line/source tiles
+        if (t === T.POWER_LINE) {
+          const cx = x + 0.5, cz = z + 0.5;
+          const poleMat = new THREE.MeshPhongMaterial({ color: '#6a5a44', shininess: 2 });
+          const pole = new THREE.Mesh(box(0.07, 1.1, 0.07), poleMat);
+          pole.position.set(cx, 0.55, cz);
+          pole.castShadow = true;
+          this._addTarget.add(pole);
+          // crossarm
+          const arm = new THREE.Mesh(box(0.5, 0.05, 0.07), poleMat);
+          arm.position.set(cx, 1.0, cz);
+          this._addTarget.add(arm);
+          // wires to powered neighbours (drawn as thin dark strands)
+          const wireMat = new THREE.MeshPhongMaterial({ color: '#222222' });
+          const conduct = (xx, zz) => {
+            const tt = this.grid.get(xx, zz);
+            return tt === T.POWER_LINE || this.grid._isPowerSource(tt);
+          };
+          if (conduct(x + 1, z) || conduct(x - 1, z)) {
+            const w = new THREE.Mesh(box(1.0, 0.02, 0.02), wireMat);
+            w.position.set(cx, 1.0, cz); this._addTarget.add(w);
+          }
+          if (conduct(x, z + 1) || conduct(x, z - 1)) {
+            const w = new THREE.Mesh(box(0.02, 0.02, 1.0), wireMat);
+            w.position.set(cx, 1.0, cz); this._addTarget.add(w);
+          }
+          continue;
+        }
+
+        // Roads: asphalt slab + center lane marking connecting to neighbours
+        if (t === T.ROAD) {
+          const cx = x + 0.5, cz = z + 0.5;
+          const slab = new THREE.Mesh(box(0.98, 0.06, 0.98),
+            new THREE.MeshPhongMaterial({ color: '#2c2c34', shininess: 6 }));
+          slab.position.set(cx, 0.03, cz);
+          slab.receiveShadow = true;
+          this._addTarget.add(slab);
+          // Lane dashes toward connected road neighbours
+          const lm = new THREE.MeshPhongMaterial({ color: '#c8b840', emissive: new THREE.Color('#332b00') });
+          const isRoad = (xx, zz) => {
+            const tt = this.grid.get(xx, zz);
+            return tt === T.ROAD || tt === T.BRIDGE || tt === T.TEMP_BRIDGE;
+          };
+          if (isRoad(x + 1, z) || isRoad(x - 1, z)) {
+            const m = new THREE.Mesh(box(0.9, 0.02, 0.06), lm);
+            m.position.set(cx, 0.07, cz); this._addTarget.add(m);
+          }
+          if (isRoad(x, z + 1) || isRoad(x, z - 1)) {
+            const m = new THREE.Mesh(box(0.06, 0.02, 0.9), lm);
+            m.position.set(cx, 0.07, cz); this._addTarget.add(m);
+          }
+          continue;
+        }
+
+        // Zone tiles use development level from meta
+        let def;
+        if (t === T.ZONE_RES || t === T.ZONE_COM || t === T.ZONE_IND) {
+          const level = this.grid.meta[x][z].zoneLevel ?? 0;
+          def = zoneDef(t, level, x, z);
+        } else {
+          def = BUILD_DEF[t];
+        }
+        if (!def) continue;
+
+        const cx = x + 0.5, cz = z + 0.5;
+        const base = this._makeBuildingMesh(def, cx, cz);
+        this._addTarget.add(base);
+
+        // Base shadow + window details for structures taller than ground-level
+        if (def.h > 0.1) this._addBuildingDetails(def, cx, cz, t);
+
+        // Chimney
+        if (def.chimney) {
+          const ch = new THREE.Mesh(box(0.12, def.h * 0.6, 0.12), mat('#332222'));
+          ch.position.set(cx + 0.15, def.h + def.h * 0.3, cz + 0.15);
+          this._addTarget.add(ch);
+        }
+
+        // Wind turbine blades (horizontal cross on top)
+        if (def.turbine) {
+          const hub = new THREE.Mesh(box(0.18, 0.18, 0.18), mat('#cccccc'));
+          hub.position.set(cx, def.h + 0.09, cz);
+          this._addTarget.add(hub);
+          const blades = new THREE.Mesh(box(1.4, 0.06, 0.08), mat('#dddddd'));
+          blades.position.set(cx, def.h + 0.09, cz);
+          this._addTarget.add(blades);
+          this._turbineBlades.push(blades);
+        }
+
+        // HQ roof + antenna spire
+        if (def.label === 'HQ') {
+          // Crown
+          const crown = new THREE.Mesh(box(0.65, 0.2, 0.65), mat('#aaccff'));
+          crown.position.set(cx, def.h + 0.1, cz);
+          this._addTarget.add(crown);
+          // Antenna
+          const antenna = new THREE.Mesh(box(0.05, 2.0, 0.05), mat('#888899'));
+          antenna.position.set(cx, def.h + 0.2 + 1.0, cz);
+          this._addTarget.add(antenna);
+          // Beacon light
+          const beacon = new THREE.Mesh(box(0.12, 0.12, 0.12),
+            new THREE.MeshPhongMaterial({
+              color: def.c, emissive: new THREE.Color(def.c), shininess: 100
+            })
+          );
+          beacon.position.set(cx, def.h + 2.3, cz);
+          this._addTarget.add(beacon);
+        }
+
+        // Service-building decorations
+        if (def.service === 'hospital') {
+          // Red cross on the roof + an emissive sign
+          const crossMat = new THREE.MeshPhongMaterial({ color: '#dd2222', emissive: new THREE.Color('#440000') });
+          const v = new THREE.Mesh(box(0.12, 0.34, 0.04), crossMat);
+          v.position.set(cx, def.h + 0.2, cz); this._addTarget.add(v);
+          const hbar = new THREE.Mesh(box(0.34, 0.12, 0.04), crossMat);
+          hbar.position.set(cx, def.h + 0.2, cz); this._addTarget.add(hbar);
+          // entrance canopy
+          const canopy = new THREE.Mesh(box(def.w * 0.6, 0.06, 0.25), mat('#cfd6dc'));
+          canopy.position.set(cx, 0.35, cz + def.d / 2 + 0.1); this._addTarget.add(canopy);
+        }
+        if (def.service === 'police') {
+          const light = new THREE.Mesh(box(0.1, 0.1, 0.1),
+            new THREE.MeshPhongMaterial({ color: '#3366ff', emissive: new THREE.Color('#1133aa') }));
+          light.position.set(cx, def.h + 0.12, cz); this._addTarget.add(light);
+        }
+        if (def.service === 'fire') {
+          // garage door band + roof light
+          const door = new THREE.Mesh(box(def.w * 0.7, 0.4, 0.04), mat('#7a1f1f'));
+          door.position.set(cx, 0.25, cz + def.d / 2 + 0.011); this._addTarget.add(door);
+          const light = new THREE.Mesh(box(0.1, 0.1, 0.1),
+            new THREE.MeshPhongMaterial({ color: '#ff3322', emissive: new THREE.Color('#aa1100') }));
+          light.position.set(cx, def.h + 0.12, cz); this._addTarget.add(light);
+        }
+        if (def.service === 'park') {
+          // a few small trees + path
+          const leaf = new THREE.MeshPhongMaterial({ color: '#2f6b2a' });
+          const trunkM = new THREE.MeshPhongMaterial({ color: '#5b3a1e' });
+          for (const [ox, oz] of [[-0.25,-0.2],[0.2,0.25],[0.25,-0.25]]) {
+            const tr = new THREE.Mesh(box(0.06, 0.3, 0.06), trunkM);
+            tr.position.set(cx+ox, 0.27, cz+oz); this._addTarget.add(tr);
+            const lf = new THREE.Mesh(box(0.3, 0.3, 0.3), leaf);
+            lf.rotation.y = Math.PI/4; lf.position.set(cx+ox, 0.5, cz+oz); this._addTarget.add(lf);
+          }
+        }
+      }
+    }
+    this._addTarget = this._buildingGroup;
+  }
+
+  _makeBuildingMesh(def, cx, cz) {
+    const m = new THREE.Mesh(box(def.w, def.h, def.d), mat(def.c));
+    m.position.set(cx, def.h / 2, cz);
+    m.castShadow    = true;
+    m.receiveShadow = true;
+    return m;
+  }
+
+  _addBuildingDetails(def, cx, cz, tileType) {
+    const isRes = tileType === T.ZONE_RES;
+    const isCom = tileType === T.ZONE_COM;
+    const isInd = tileType === T.ZONE_IND;
+
+    // Dark shadow base plate under building
+    const base = new THREE.Mesh(
+      box(Math.min(def.w + 0.12, 0.98), 0.04, Math.min(def.d + 0.12, 0.98)),
+      new THREE.MeshPhongMaterial({ color: '#080810', shininess: 0 })
+    );
+    base.position.set(cx, 0.02, cz);
+    this._addTarget.add(base);
+
+    // ── Ground-floor storefront band for commercial ────────────────────────
+    if (isCom && def.h > 1.2) {
+      const storeMat = new THREE.MeshPhongMaterial({
+        color: '#88ccee', emissive: new THREE.Color('#0a2233'), shininess: 100
+      });
+      const store = new THREE.Mesh(box(def.w * 1.02, 0.4, def.d * 1.02), storeMat);
+      store.position.set(cx, 0.22, cz);
+      this._addTarget.add(store);
+      // awning lip
+      const awn = new THREE.Mesh(box(def.w * 1.1, 0.04, def.d * 1.1),
+        new THREE.MeshPhongMaterial({ color: '#993333' }));
+      awn.position.set(cx, 0.44, cz);
+      this._addTarget.add(awn);
+    }
+
+    // ── Balcony bands on tall residential ──────────────────────────────────
+    if (isRes && def.h >= 2.0) {
+      const balMat = new THREE.MeshPhongMaterial({ color: '#9a9488', shininess: 4 });
+      const floors = Math.floor(def.h / 0.9);
+      for (let f = 1; f < floors; f++) {
+        const y = f * 0.9;
+        if (y > def.h - 0.3) break;
+        const band = new THREE.Mesh(box(def.w + 0.1, 0.05, def.d + 0.1), balMat);
+        band.position.set(cx, y, cz);
+        this._addTarget.add(band);
+      }
+    }
+
+    // ── Pitched roof for short residential houses ──────────────────────────
+    if (isRes && def.h < 2.0) {
+      // Roof prism: a thin box rotated 45° reads as a gable from the play angle
+      const roofMat = new THREE.MeshPhongMaterial({ color: '#7a3b2a', shininess: 8 });
+      const roof = new THREE.Mesh(box(def.w * 1.05, def.w * 0.5, def.d * 1.05), roofMat);
+      roof.rotation.z = Math.PI / 4;
+      roof.scale.set(0.7, 0.7, 1);
+      roof.position.set(cx, def.h + def.w * 0.18, cz);
+      roof.castShadow = true;
+      this._addTarget.add(roof);
+    }
+
+    // ── Flat-roof detail (AC units / water tank) on commercial & industrial ─
+    if ((isCom || isInd) && def.h > 0.6) {
+      const acMat = new THREE.MeshPhongMaterial({ color: '#999999', shininess: 10 });
+      for (let i = 0; i < 2; i++) {
+        const ac = new THREE.Mesh(box(0.14, 0.12, 0.14), acMat);
+        ac.position.set(cx + (i ? 0.15 : -0.15), def.h + 0.06, cz + (i ? -0.12 : 0.1));
+        this._addTarget.add(ac);
+      }
+      // Parapet lip around the roof edge
+      const lipMat = new THREE.MeshPhongMaterial({ color: '#555560' });
+      const lip = new THREE.Mesh(box(def.w + 0.04, 0.08, def.d + 0.04), lipMat);
+      lip.position.set(cx, def.h + 0.04, cz);
+      this._addTarget.add(lip);
+    }
+
+    // ── Window grid on all four faces ──────────────────────────────────────
+    if (def.h > 1.0) {
+      // Glassy emissive windows; commercial = bluish glass, res = warm, ind = dim
+      const winColor = isCom ? '#bfe0ff' : isInd ? '#aab0b8' : '#ffe9b0';
+      const emis     = isCom ? '#16344f' : isInd ? '#1a1c20' : '#3a2a08';
+      const winMat = new THREE.MeshPhongMaterial({
+        color: winColor, emissive: new THREE.Color(emis),
+        shininess: 90, specular: new THREE.Color(0x666666)
+      });
+      const floorH = isRes ? 0.7 : 0.85;
+      const numFloors = Math.max(1, Math.floor((def.h - 0.3) / floorH));
+      const cols = def.w > 0.55 ? 3 : 2;
+      for (let f = 0; f < numFloors; f++) {
+        const y = 0.35 + f * floorH;
+        if (y > def.h - 0.2) break;
+        for (let c = 0; c < cols; c++) {
+          const ox = (c / (cols - 1 || 1) - 0.5) * def.w * 0.7;
+          // front/back faces
+          const wf = new THREE.Mesh(box(0.09, 0.16, 0.02), winMat);
+          wf.position.set(cx + ox, y, cz + def.d / 2 + 0.011); this._addTarget.add(wf);
+          const wb = new THREE.Mesh(box(0.09, 0.16, 0.02), winMat);
+          wb.position.set(cx + ox, y, cz - def.d / 2 - 0.011); this._addTarget.add(wb);
+          // left/right faces
+          const wl = new THREE.Mesh(box(0.02, 0.16, 0.09), winMat);
+          wl.position.set(cx + def.w / 2 + 0.011, y, cz + ox); this._addTarget.add(wl);
+          const wr = new THREE.Mesh(box(0.02, 0.16, 0.09), winMat);
+          wr.position.set(cx - def.w / 2 - 0.011, y, cz + ox); this._addTarget.add(wr);
+        }
+      }
+    }
+  }
+
+  // ── Dynamic: units, vehicles, trains, explosions ─────────────────────────
+  _rebuildDynamic(units, traffic, bridgeTrucks, trains, edgeNodes, freightBlue, freightYellow, wasteBlue, wasteYellow) {
+    // Dispose old dynamic children
+    this._dynGroup.clear();
+
+    // Unpowered-building markers (throttled scan)
+    this._addUnpoweredMarkers();
+
+    // Edge nodes (star pillars)
+    if (edgeNodes) {
+      for (const node of edgeNodes.nodes) {
+        const color = node.owner === 'blue' ? '#44aaff' : '#ffaa22';
+        const pillar = mesh(0.3, 4, 0.3, color);
+        pillar.position.set(node.x + 0.5, 2, node.z + 0.5);
+        this._dynGroup.add(pillar);
+        const cap = mesh(1.0, 0.3, 1.0, color);
+        cap.position.set(node.x + 0.5, 4.15, node.z + 0.5);
+        this._dynGroup.add(cap);
+      }
+    }
+
+    // Freight trucks
+    this._addVehicles(freightBlue?.activeTrucks ?? [],   '#a87c44', 0.7, 0.35, 0.45);
+    this._addVehicles(freightYellow?.activeTrucks ?? [], '#cc9933', 0.7, 0.35, 0.45);
+
+    // Garbage trucks
+    this._addVehicles(wasteBlue?.trucks ?? [],   '#999999', 0.5, 0.35, 0.4);
+    this._addVehicles(wasteYellow?.trucks ?? [], '#bbbbbb', 0.5, 0.35, 0.4);
+
+    // Civilian cars
+    this._addVehicles(traffic?.blueTraffic?.cars?.filter(c=>c.active) ?? [],   '#88ccff', 0.35, 0.18, 0.28);
+    this._addVehicles(traffic?.yellowTraffic?.cars?.filter(c=>c.active) ?? [], '#ffcc88', 0.35, 0.18, 0.28);
+
+    // Bridge trucks
+    for (const t of (bridgeTrucks?.activeTrucks ?? [])) {
+      const color = t.faction === 'blue' ? '#22aaff' : '#ffcc00';
+      const bm = mesh(0.8, 0.4, 0.5, color);
+      bm.position.set(t.x + 0.5, 0.2 + this._elev(t.x, t.z), t.z + 0.5);
+      this._dynGroup.add(bm);
+    }
+
+    // Combat units (spheres)
+    for (const u of units.blueUnits) {
+      this._addSphere(u.x + 0.5, 0.22 + this._elev(u.x, u.z), u.z + 0.5, u.combat ? '#ff4444' : '#2266ff', 0.22);
+    }
+    for (const u of units.yellowUnits) {
+      this._addSphere(u.x + 0.5, 0.22 + this._elev(u.x, u.z), u.z + 0.5, u.combat ? '#ff4444' : '#ffaa00', 0.22);
+    }
+
+    // HQ health bars (floating thin planes above HQs)
+    for (const hq of units.blueHQs)   this._addHPBar(hq.x, hq.z, hq.hp/hq.maxHp, '#2266ff');
+    for (const hq of units.yellowHQs) this._addHPBar(hq.x, hq.z, hq.hp/hq.maxHp, '#ffaa00');
+
+    // War trains
+    for (const train of (trains ?? [])) {
+      if (!train.active || train.derailed) continue;
+      for (const [px, pz, label] of train.carPositions) {
+        const isHead = label === 'head';
+        const color  = isHead
+          ? (train.faction === 'blue' ? '#55aaff' : '#ffcc44')
+          : (SLOT_COLORS[label] ?? '#888888');
+        const tm = mesh(isHead ? 1.6 : 1.2, isHead ? 0.7 : 0.5, isHead ? 0.9 : 0.7, color);
+        tm.position.set(px + 0.5, 0.35 + this._elev(px, pz), pz + 0.5);
+        this._dynGroup.add(tm);
+      }
+    }
+  }
+
+  _elev(x, z) { return this.grid.elevation(Math.round(x), Math.round(z)); }
+
+  // Scan for buildings/zones not connected to the power grid; cache the list and
+  // refresh it a few times a second. Markers float a red bolt above each.
+  _addUnpoweredMarkers() {
+    this._upTimer = (this._upTimer ?? 0) + 0.016;
+    if (!this._unpowered || this._upTimer > 0.4) {
+      this._upTimer = 0;
+      this._unpowered = [];
+      const g = this.grid;
+      for (let x = 1; x < GRID_SIZE - 1; x++) {
+        for (let z = 1; z < GRID_SIZE - 1; z++) {
+          const t = g.data[x][z];
+          // Only flag developed buildings and zones (skip roads/lines/empty/water)
+          const isZone = (t === T.ZONE_RES || t === T.ZONE_COM || t === T.ZONE_IND);
+          const isBuilding = t >= 10 && t !== T.POWER_LINE && !g._isPowerSource(t);
+          if (!isZone && !isBuilding) continue;
+          if (g.isPowered(x, z)) continue;
+          this._unpowered.push([x, z]);
+        }
+      }
+    }
+    const boltMat = new THREE.MeshBasicMaterial({ color: '#ff3030' });
+    for (const [x, z] of this._unpowered) {
+      const e = this.grid.elevation(x, z);
+      const b = new THREE.Mesh(box(0.12, 0.12, 0.12), boltMat);
+      b.position.set(x + 0.5, e + 1.6, z + 0.5);
+      this._dynGroup.add(b);
+    }
+  }
+
+  _addVehicles(list, color, w, h, d) {
+    for (const v of list) {
+      if (v.active === false) continue;
+      const m = mesh(w, h, d, color);
+      m.position.set((v.x ?? 0) + 0.5, h / 2 + 0.03 + this._elev(v.x ?? 0, v.z ?? 0), (v.z ?? 0) + 0.5);
+      this._dynGroup.add(m);
+    }
+  }
+
+  _addSphere(x, y, z, color, r) {
+    const key = 'sphere_' + r;
+    if (!_geos[key]) _geos[key] = new THREE.SphereGeometry(r, 8, 6);
+    const m = new THREE.Mesh(_geos[key], mat(color));
+    m.position.set(x, y, z);
+    m.castShadow = true;
+    this._dynGroup.add(m);
+  }
+
+  _addHPBar(tx, tz, ratio, color) {
+    const e = this._elev(tx, tz);
+    const bg = mesh(1.0, 0.08, 0.08, '#333333');
+    bg.position.set(tx + 0.5, 7.0 + e, tz + 0.5);
+    this._dynGroup.add(bg);
+    const bar = mesh(ratio, 0.08, 0.09, color);
+    bar.position.set(tx + 0.5 - (1 - ratio) / 2, 7.0 + e, tz + 0.49);
+    this._dynGroup.add(bar);
+  }
+
+  // ── Explosions ────────────────────────────────────────────────────────────
+  addExplosion(x, z, radius) {
+    const geo  = new THREE.SphereGeometry(1, 12, 8);
+    const mat2 = new THREE.MeshBasicMaterial({ color: '#ff6600', transparent: true, opacity: 0.85 });
+    const sphere = new THREE.Mesh(geo, mat2);
+    sphere.position.set(x + 0.5, 0, z + 0.5);
+    this._explosionGroup.add(sphere);
+    this.explosions.push({ mesh: sphere, geo, mat: mat2, t: 0, maxT: 2.0, radius });
+  }
+
+  _tickExplosions(dt) {
+    for (const ex of this.explosions) {
+      ex.t += dt;
+      const frac = Math.min(1, ex.t / ex.maxT);
+      ex.mesh.scale.setScalar(ex.radius * (0.2 + frac * 2.5));
+      ex.mat.opacity = Math.max(0, 0.85 * (1 - frac));
+      ex.mat.color.setStyle(frac < 0.25 ? '#ffffff' : frac < 0.55 ? '#ff8800' : '#ff2200');
+      ex.mat.needsUpdate = true;
+    }
+    const dead = this.explosions.filter(ex => ex.t >= ex.maxT);
+    for (const ex of dead) {
+      this._explosionGroup.remove(ex.mesh);
+      ex.geo.dispose();
+    }
+    this.explosions = this.explosions.filter(ex => ex.t < ex.maxT);
+  }
+
+  // ── Turbine animation ─────────────────────────────────────────────────────
+  _animateTurbines(dt) {
+    for (const b of this._turbineBlades) {
+      b.rotation.z += dt * 1.5;
+    }
+  }
+
+  // ── Main render ───────────────────────────────────────────────────────────
+  render(dt, units, traffic, bridgeTrucks, trains, edgeNodes, freightBlue, freightYellow, wasteBlue, wasteYellow) {
+    if (this._dirty) {
+      this._rebuildBuildings();
+      this._dirty = false;
+    }
+
+    this._rebuildDynamic(units, traffic, bridgeTrucks, trains, edgeNodes, freightBlue, freightYellow, wasteBlue, wasteYellow);
+    this._tickExplosions(dt);
+    this._animateTurbines(dt);
+    this._tickDayNight(dt);
+    this.controls.update();
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  // ── Day/night cycle ───────────────────────────────────────────────────────
+  _tickDayNight(dt) {
+    this._dayT += dt;
+    // Full cycle every 120s. daylight in [0..1], 1 = noon, 0 = midnight
+    const phase = (this._dayT % 120) / 120;            // 0..1
+    const daylight = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2); // smooth 0..1..0
+    // Push contrast: sharper curve so noon is bright and midnight is genuinely dark
+    const d = Math.pow(Math.max(0, daylight), 0.7);
+    const nightFloor = 0.02;
+
+    if (this._sun)     this._sun.intensity     = 0.05 + d * 2.6;
+    if (this._ambient) this._ambient.intensity = nightFloor + d * 1.4;
+    if (this._hemi)    this._hemi.intensity    = 0.1 + d * 0.9;
+    // Move the sun across the sky for shifting shadows
+    if (this._sun) this._sun.position.set(40 + Math.cos(phase * Math.PI * 2) * 90, 20 + d * 110, 60);
+
+    // Tint sky from near-black night → bright day blue
+    const lerp = (a, b) => Math.round(a + (b - a) * d);
+    const r = lerp(0x05, 0x6b);
+    const g = lerp(0x07, 0x9c);
+    const b = lerp(0x12, 0xd0);
+    const hex = (r << 16) | (g << 8) | b;
+    if (this.scene.background && this.scene.background.setHex) this.scene.background.setHex(hex);
+    if (this.scene.fog && this.scene.fog.color && this.scene.fog.color.setHex) this.scene.fog.color.setHex(hex);
+  }
+
+  markDirty() { this._dirty = true; this._buildParcelOverlay(); this._addTrees(); }
+
+  // ── Coordinate conversion (for click handling) ────────────────────────────
+  screenToWorld(sx, sz) {
+    const w = this.renderer.domElement.clientWidth;
+    const h = this.renderer.domElement.clientHeight;
+    const ndc = new THREE.Vector2(
+      (sx / w) * 2 - 1,
+      -(sz / h) * 2 + 1
+    );
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(ndc, this.camera);
+    const plane  = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const target = new THREE.Vector3();
+    raycaster.ray.intersectPlane(plane, target);
+    return { x: Math.floor(target.x), z: Math.floor(target.z) };
+  }
+}
+
+
+// ===================== main.js =====================
+// ─── Core systems ─────────────────────────────────────────────────────────────
+const grid          = new Grid();
+const blueEcon      = new Economy('blue',   grid);
+const yellowEcon    = new Economy('yellow', grid);
+const units         = new UnitManager();
+const blueTraffic   = new TrafficManager('blue',   grid, blueEcon);
+const yellowTraffic = new TrafficManager('yellow', grid, yellowEcon);
+const ai            = new AI(grid, yellowEcon, units);
+const canvas        = document.getElementById('canvas');
+const renderer      = new Renderer3D(canvas, grid);
+
+// ─── Extended systems ─────────────────────────────────────────────────────────
+const blueTrain     = new WarTrain('blue');
+const yellowTrain   = new WarTrain('yellow');
+const bridgeTrucks  = new BridgeTruckManager();
+const blueWaste     = new WasteManager('blue',   grid, blueEcon);
+const yellowWaste   = new WasteManager('yellow', grid, yellowEcon);
+const edgeNodes     = new EdgeNodeManager();
+const blueFreight   = new FreightManager('blue',   grid, blueEcon);
+const yellowFreight = new FreightManager('yellow', grid, yellowEcon);
+
+// ─── Game state ───────────────────────────────────────────────────────────────
+let elapsedSec     = 0;
+let peacetime      = true;
+let activeTool     = 'select';
+let lastTime       = null;
+let aiTrainDeployed = false;
+let aiTruckTimer   = 0;
+
+// Barracks spawn
+let barracksTimer = 0;
+const BARRACKS_INTERVAL = 8;
+const BARRACKS_COST     = 500;
+
+// Zone development
+const ZONE_DEVELOP_TIME = [0, 30, 90, 240]; // seconds to reach each level
+
+// ─── Initial map ──────────────────────────────────────────────────────────────
+function initStartingState() {
+  _place('blue',   10, 20, T.BLUE_HQ,   false); units.registerHQ('blue',   10, 20);
+  _place('blue',   10, 60, T.BLUE_HQ,   false); units.registerHQ('blue',   10, 60);
+  blueEcon.hqCount = 2;
+  _place('yellow', 70, 20, T.YELLOW_HQ, false); units.registerHQ('yellow', 70, 20);
+  _place('yellow', 70, 60, T.YELLOW_HQ, false); units.registerHQ('yellow', 70, 60);
+  yellowEcon.hqCount = 2;
+
+  // Blue road grid: vertical spine + horizontal streets
+  for (let z = 2; z < GRID_SIZE - 2; z++) grid.set(2,  z, T.ROAD);
+  for (let z = 2; z < GRID_SIZE - 2; z++) grid.set(15, z, T.ROAD);
+  for (let z = 2; z < GRID_SIZE - 2; z++) grid.set(28, z, T.ROAD);
+  for (let x = 2; x <= BLUE_X_END;   x++) grid.set(x, 15, T.ROAD);
+  for (let x = 2; x <= BLUE_X_END;   x++) grid.set(x, 30, T.ROAD);
+  for (let x = 2; x <= BLUE_X_END;   x++) grid.set(x, 50, T.ROAD);
+  for (let x = 2; x <= BLUE_X_END;   x++) grid.set(x, 65, T.ROAD);
+
+  // Yellow road grid: vertical spine + horizontal streets
+  for (let z = 2; z < GRID_SIZE - 2; z++) grid.set(YELLOW_X_START + 2, z, T.ROAD);
+  for (let z = 2; z < GRID_SIZE - 2; z++) grid.set(YELLOW_X_START + 15, z, T.ROAD);
+  for (let z = 2; z < GRID_SIZE - 2; z++) grid.set(YELLOW_X_START + 28, z, T.ROAD);
+  for (let x = YELLOW_X_START; x <= YELLOW_X_END - 2; x++) grid.set(x, 15, T.ROAD);
+  for (let x = YELLOW_X_START; x <= YELLOW_X_END - 2; x++) grid.set(x, 30, T.ROAD);
+  for (let x = YELLOW_X_START; x <= YELLOW_X_END - 2; x++) grid.set(x, 50, T.ROAD);
+  for (let x = YELLOW_X_START; x <= YELLOW_X_END - 2; x++) grid.set(x, 65, T.ROAD);
+
+  renderer.markDirty();
+}
+
+function _place(faction, x, z, type, register = true) {
+  grid.set(x, z, type);
+  const econ = faction === 'blue' ? blueEcon : yellowEcon;
+  econ.addStructure(type);
+  if (register && (type === T.BLUE_HQ || type === T.YELLOW_HQ)) units.registerHQ(faction, x, z);
+}
+
+// ─── Zone development tick ────────────────────────────────────────────────────
+// ─── RCI demand model (Cities: Skylines style) ────────────────────────────────
+// Demand is computed per faction from the balance of developed zones.
+const demand = {
+  blue:   { r: 0.5, c: 0.3, i: 0.4 },
+  yellow: { r: 0.5, c: 0.3, i: 0.4 },
+};
+
+function countZones(faction) {
+  const lo = faction === 'blue' ? 1 : YELLOW_X_START;
+  const hi = faction === 'blue' ? BLUE_X_END : YELLOW_X_END - 1;
+  let r = 0, c = 0, i = 0, rCap = 0, cCap = 0, iCap = 0;
+  for (let x = lo; x <= hi; x++) {
+    for (let z = 1; z < GRID_SIZE - 1; z++) {
+      const t = grid.data[x][z];
+      const lvl = grid.meta[x][z].zoneLevel ?? 0;
+      if (t === T.ZONE_RES) { rCap++; r += lvl; }
+      else if (t === T.ZONE_COM) { cCap++; c += lvl; }
+      else if (t === T.ZONE_IND) { iCap++; i += lvl; }
+    }
+  }
+  return { r, c, i, rCap, cCap, iCap };
+}
+
+function updateDemand(faction) {
+  const d = demand[faction];
+  const z = countZones(faction);
+  // Developed "slots" of each type
+  const homes = z.r;            // residential capacity in use
+  const jobs  = z.i + z.c;      // industry + commercial provide jobs
+  const shops = z.c;
+
+  // Baseline demand keeps a young city growing even before anything is built.
+  // Residential leads (people move in first), then jobs/shops follow population.
+  let rd = 0.55 + (jobs - homes) * 0.04;
+  let cd = 0.30 + (homes * 0.5 - shops) * 0.05;
+  let id = 0.40 + (homes * 0.6 - z.i) * 0.05;
+
+  // Oversupply damping: only when a LOT of developed capacity already sits idle
+  // relative to the city's size (prevents runaway sprawl, not initial growth).
+  // We compare developed levels, not raw painted tiles, so empty zoned land
+  // never deadlocks its own development.
+  const totalDev = homes + jobs + 1;
+  if (z.r > totalDev * 0.6) rd -= 0.25;   // already mostly residential
+  if (z.c > totalDev * 0.4) cd -= 0.25;
+  if (z.i > totalDev * 0.4) id -= 0.25;
+
+  // Smoothly approach targets
+  d.r += (clamp01(rd) - d.r) * 0.1;
+  d.c += (clamp01(cd) - d.c) * 0.1;
+  d.i += (clamp01(id) - d.i) * 0.1;
+}
+function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+
+function tickZoneDevelopment(dt) {
+  updateDemand('blue');
+  updateDemand('yellow');
+
+  let dirty = false;
+  for (let x = 1; x <= GRID_SIZE-2; x++) {
+    for (let z = 1; z <= GRID_SIZE-2; z++) {
+      const t = grid.data[x][z];
+      if (t !== T.ZONE_RES && t !== T.ZONE_COM && t !== T.ZONE_IND) continue;
+
+      const m = grid.meta[x][z];
+      if (!m.zoneLevel) m.zoneLevel = 0;
+      if (m.zoneLevel >= 3) continue;
+
+      const faction = x <= BLUE_X_END ? 'blue' : 'yellow';
+      const econ = faction === 'blue' ? blueEcon : yellowEcon;
+      // Needs adjacent road and power
+      if (!econ.hasPower) continue;                 // faction must have generation capacity
+      if (!grid.isPowered(x, z)) continue;          // and this tile must be connected to the grid
+      if (!grid.hasAdjacentRoad(x, z)) continue;
+
+      // Demand gate: only grow when there's demand for this zone type
+      const d = demand[faction];
+      const dem = t === T.ZONE_RES ? d.r : t === T.ZONE_COM ? d.c : d.i;
+      if (dem < 0.1) continue;
+
+      if (!m.devTimer) m.devTimer = 0;
+      // Higher demand → faster development
+      m.devTimer += dt * (0.5 + dem * 1.5);
+
+      const needed = ZONE_DEVELOP_TIME[m.zoneLevel + 1];
+      if (m.devTimer >= needed) {
+        m.zoneLevel++;
+        m.devTimer = 0;
+        dirty = true;
+      }
+    }
+  }
+  if (dirty) renderer.markDirty();
+}
+
+// ─── Tool system ──────────────────────────────────────────────────────────────
+window.setTool = (tool) => {
+  activeTool = tool;
+  document.querySelectorAll('.btn[data-tool]').forEach(b =>
+    b.classList.toggle('active', b.dataset.tool === tool)
+  );
+};
+
+window.buyWarTrain = () => {
+  if (blueTrain.active) { logMsg('Train already deployed'); return; }
+  if (blueEcon.structures.rail_station === 0) { logMsg('Need a Railway Station first'); return; }
+  if (!blueEcon.spend(STRUCTURE_COSTS.war_train)) { logMsg('Need $100,000'); return; }
+  blueTrain.active = true;
+  logMsg('War Train deployed — now circling the map');
+};
+
+window.addTrainSlot = (type) => {
+  if (!blueTrain.active) { logMsg('Deploy the War Train first'); return; }
+  const cost = SLOT_COSTS[type];
+  if (!blueEcon.spend(cost)) { logMsg(`Need $${cost.toLocaleString()}`); return; }
+  if (!blueTrain.addSlot(type)) { logMsg('Train is full (4 slots max)'); return; }
+  logMsg(`Added ${type} car`);
+};
+
+window.spawnBridgeTruck = (isRail) => {
+  const key  = isRail ? 'rail_bridge_truck' : 'bridge_truck';
+  const cost = STRUCTURE_COSTS[key];
+  if (blueEcon.structures.bridge_depot === 0) { logMsg('Need a Bridge Depot first'); return; }
+  if (!blueEcon.spend(cost)) { logMsg(`Need $${cost.toLocaleString()}`); return; }
+  const t = bridgeTrucks.spawn('blue', 5, Math.floor(Math.random() * (GRID_SIZE-10))+5, isRail);
+  if (isRail) {
+    const broken = bridgeTrucks.findBrokenRail(grid);
+    if (broken) t.setRailTarget(...broken);
+  }
+  logMsg(isRail ? 'Rail-Bridge Truck dispatched' : 'Bridge Truck dispatched');
+};
+
+// ─── Drag-paint click handling ────────────────────────────────────────────────
+// Tools that support click-and-drag painting across many tiles.
+const DRAG_TOOLS = new Set(['road','power_line','zone_res','zone_com','zone_ind','destroy_bridge','destroy_rail','bulldoze']);
+let _painting   = false;
+let _paintLast  = null;   // {x,z} last painted tile to avoid re-spamming
+let _dragMoved  = false;
+
+function _cellFromEvent(e) {
+  const { x, z } = renderer.screenToWorld(e.clientX, e.clientY);
+  if (x < 0 || x >= GRID_SIZE || z < 0 || z >= GRID_SIZE) return null;
+  return { x, z };
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  const c = _cellFromEvent(e);
+  if (!c) return;
+  // Only start a paint-drag for drag-capable tools; otherwise let OrbitControls handle it
+  if (DRAG_TOOLS.has(activeTool)) {
+    _painting  = true;
+    _dragMoved = false;
+    _paintLast = null;
+    renderer.controls.enabled = false;      // don't rotate camera while painting
+    handleClick(c.x, c.z);
+    _paintLast = c;
+    e.preventDefault();
+  }
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  if (!_painting) return;
+  const c = _cellFromEvent(e);
+  if (!c) return;
+  if (_paintLast && c.x === _paintLast.x && c.z === _paintLast.z) return;
+  _dragMoved = true;
+  // Interpolate a straight line between last and current cell so fast drags don't skip
+  if (_paintLast) {
+    for (const p of _lineCells(_paintLast.x, _paintLast.z, c.x, c.z)) handleClick(p.x, p.z);
+  } else {
+    handleClick(c.x, c.z);
+  }
+  _paintLast = c;
+});
+
+function _endPaint() {
+  if (_painting) { _painting = false; renderer.controls.enabled = true; }
+}
+canvas.addEventListener('pointerup',     _endPaint);
+canvas.addEventListener('pointerleave',  _endPaint);
+window.addEventListener('pointerup',     _endPaint);
+
+// Bresenham-ish line between two grid cells
+function _lineCells(x0, z0, x1, z1) {
+  const cells = [];
+  const dx = Math.abs(x1 - x0), dz = Math.abs(z1 - z0);
+  const sx = x0 < x1 ? 1 : -1, sz = z0 < z1 ? 1 : -1;
+  let err = dx - dz, x = x0, z = z0;
+  let guard = 0;
+  while (guard++ < 400) {
+    cells.push({ x, z });
+    if (x === x1 && z === z1) break;
+    const e2 = 2 * err;
+    if (e2 > -dz) { err -= dz; x += sx; }
+    if (e2 <  dx) { err += dx; z += sz; }
+  }
+  return cells;
+}
+
+// Single-click fallback for non-drag tools (placement buildings) + right-click pack-up
+canvas.addEventListener('click', (e) => {
+  if (_dragMoved) { _dragMoved = false; return; } // was a drag, already handled
+  if (DRAG_TOOLS.has(activeTool)) return;          // drag tools handled on pointerdown
+  const c = _cellFromEvent(e);
+  if (!c) return;
+  handleClick(c.x, c.z);
+});
+
+canvas.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const { x, z } = renderer.screenToWorld(e.clientX, e.clientY);
+  const truck = bridgeTrucks.getTruckNear(x, z);
+  if (truck && truck.faction === 'blue' && truck.state === 'deployed') {
+    truck.packUp(grid);
+    logMsg('Bridge Truck packing up');
+    renderer.markDirty();
+    return;
+  }
+  // Right-click with a tool active → back to Select
+  if (activeTool !== 'select') setTool('select');
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && activeTool !== 'select') setTool('select');
+});
+
+function handleClick(x, z) {
+  // Bulldoze tool — clear blue-territory tiles back to empty
+  if (activeTool === 'bulldoze') {
+    if (!grid.isBlueTerritory(x)) return;
+    const t = grid.get(x, z);
+    if (t === T.EMPTY || t === T.WATER) return;
+    if (t === T.BLUE_HQ) { logMsg('Cannot bulldoze HQ'); return; }
+    grid.set(x, z, T.EMPTY);
+    grid.meta[x][z] = {};
+    renderer.markDirty();
+    return;
+  }
+  if (activeTool === 'destroy_bridge') {
+    if (peacetime) { logMsg('Cannot destroy bridges during peace treaty'); return; }
+    if (grid.get(x, z) === T.BRIDGE) { grid.destroyBridge(z); renderer.markDirty(); logMsg('Bridge destroyed'); }
+    return;
+  }
+  if (activeTool === 'destroy_rail') {
+    if (peacetime) { logMsg('Cannot sabotage rail during peace treaty'); return; }
+    if (grid.isRailPerimeter(x, z) && !grid.isBlueTerritory(x)) {
+      if (grid.destroyRail(x, z)) { renderer.markDirty(); logMsg('Rail sabotaged!'); }
+    }
+    return;
+  }
+
+  // Emergency bridge repair
+  if (activeTool === 'road' && grid.isChasm(x) && grid.isBridgeLane(z) && grid.get(x, z) === T.BRIDGE_BROKEN) {
+    if (blueEcon.spend(10)) { grid.repairBridge(z); renderer.markDirty(); logMsg('Bridge repaired — $10'); }
+    return;
+  }
+
+  // Buy Land tool — purchase the parcel under the cursor
+  if (activeTool === 'buy_land') {
+    const p = grid.parcelOf(x, z);
+    if (!p || p.faction !== 'blue') { logMsg('Can only buy land in Blue territory'); return; }
+    if (grid.owned.blue.has(p.key)) { logMsg('You already own this parcel'); return; }
+    const cost = Math.round(grid.parcelCost('blue'));
+    if (!blueEcon.spend(cost)) { logMsg(`Need $${cost.toLocaleString()} for this parcel`); return; }
+    grid.buyParcel('blue', p.col, p.row);
+    renderer.markDirty();
+    logMsg(`Bought parcel — $${cost.toLocaleString()}`);
+    return;
+  }
+
+  if (activeTool === 'select') return;
+  if (!grid.isBlueTerritory(x)) return;
+  if (!grid.isOwned(x, z)) {
+    if (!DRAG_TOOLS.has(activeTool)) logMsg('You don\'t own this land — use Buy Land');
+    return;
+  }
+
+  const baseCost = STRUCTURE_COSTS[activeTool] ?? 0;
+  const cost     = blueEcon.applyCost(activeTool, baseCost);
+  if (!blueEcon.canAfford(cost)) { logMsg(`Need $${cost.toLocaleString()}`); return; }
+  if (activeTool === 'hq' && blueEcon.hqCount >= MAX_HQS) { logMsg('Max 5 HQs'); return; }
+  if (activeTool === 'water_pump' && x !== BLUE_X_END) { logMsg('Water pump must be at column 39'); return; }
+  if (activeTool === 'sewage' && x < 15) { blueEcon.waterContaminated = true; logMsg('⚠ Sewage near water pump — contaminated!'); }
+
+  const existing = grid.get(x, z);
+  if (existing !== T.EMPTY) {
+    if (!DRAG_TOOLS.has(activeTool)) logMsg('Tile occupied');
+    return;
+  }
+
+  const typeMap = {
+    road: T.ROAD, power_line: T.POWER_LINE, hq: T.BLUE_HQ, barracks: T.BLUE_BARRACKS,
+    coal_power: T.BLUE_COAL_POWER, wind_power: T.BLUE_WIND,
+    water_pump: T.BLUE_WATER_PUMP, sewage: T.BLUE_SEWAGE,
+    landfill: T.BLUE_LANDFILL, incinerator: T.BLUE_INCINERATOR,
+    coal_mine: T.BLUE_COAL_MINE, iron_refinery: T.BLUE_IRON,
+    gold_mine: T.BLUE_GOLD, bridge_truck_depot: T.BLUE_BRIDGE_DEPOT,
+    railway_station: T.BLUE_RAIL_STATION,
+    hospital: T.BLUE_HOSPITAL, police: T.BLUE_POLICE, fire: T.BLUE_FIRE, park: T.BLUE_PARK,
+    zone_res: T.ZONE_RES, zone_com: T.ZONE_COM, zone_ind: T.ZONE_IND,
+  };
+  const type = typeMap[activeTool];
+  if (!type) return;
+
+  blueEcon.spend(cost);
+  grid.set(x, z, type);
+
+  // Init zone metadata
+  if (type === T.ZONE_RES || type === T.ZONE_COM || type === T.ZONE_IND) {
+    grid.meta[x][z] = { zoneLevel: 0, devTimer: 0 };
+  }
+
+  blueEcon.addStructure(type);
+  if (type === T.BLUE_HQ)       units.registerHQ('blue', x, z);
+  if (type === T.BLUE_BARRACKS) units.registerBarracks('blue', x, z);
+
+  renderer.markDirty();
+  if (!DRAG_TOOLS.has(activeTool)) {
+    logMsg(`Built ${activeTool} — $${cost.toLocaleString()}`);
+    setTool('select'); // one-shot buildings deselect after placing
+  }
+}
+
+// ─── Barracks spawning ────────────────────────────────────────────────────────
+function tickBarracks(dt) {
+  if (peacetime) return;
+  barracksTimer += dt;
+  if (barracksTimer < BARRACKS_INTERVAL) return;
+  barracksTimer = 0;
+  const positions = units.blueBarracksPos;
+  for (let i = 0; i < blueEcon.structures.barracks; i++) {
+    if (blueEcon.spend(BARRACKS_COST)) {
+      const p = positions[i] ?? { x: 5, z: Math.floor(Math.random()*(GRID_SIZE-10))+5 };
+      units.spawnUnit('blue', p.x, p.z);
+    }
+  }
+}
+
+// ─── Train events ─────────────────────────────────────────────────────────────
+function processTrainEvents(events) {
+  for (const ev of events) {
+    if (ev.type === 'derail') {
+      renderer.addExplosion(ev.x, ev.z, ev.radius);
+      logMsg('TRAIN DERAILED — CATASTROPHIC EXPLOSION!');
+      const ir = Math.ceil(ev.radius);
+      const ix = Math.round(ev.x), iz = Math.round(ev.z);
+      for (let dx = -ir; dx <= ir; dx++) {
+        for (let dz = -ir; dz <= ir; dz++) {
+          if (Math.hypot(dx, dz) > ev.radius) continue;
+          const t = grid.get(ix+dx, iz+dz);
+          if (t === T.RAIL) grid.set(ix+dx, iz+dz, T.RAIL_BROKEN);
+          if (t >= 10)      grid.set(ix+dx, iz+dz, T.EMPTY);
+        }
+      }
+      for (const u of [...units.blueUnits, ...units.yellowUnits]) {
+        if (Math.hypot(u.x - ev.x, u.z - ev.z) < ev.radius) u.dead = true;
+      }
+      renderer.markDirty();
+    }
+    if (ev.type === 'spawn_unit') units.spawnUnit(ev.faction, ev.x, ev.z);
+  }
+}
+
+function tickAITrain(dt) {
+  if (!aiTrainDeployed && yellowEcon.structures.rail_station > 0 && yellowEcon.canAfford(STRUCTURE_COSTS.war_train)) {
+    yellowEcon.spend(STRUCTURE_COSTS.war_train);
+    yellowTrain.active = true;
+    yellowTrain.addSlot('anti_infantry');
+    aiTrainDeployed = true;
+    logMsg('Yellow deployed a War Train!');
+  }
+  if (yellowTrain.active && !yellowTrain.derailed) {
+    processTrainEvents(yellowTrain.tick(dt, grid, units));
+  }
+}
+
+function tickAIBridgeTrucks(dt) {
+  if (peacetime || ai.personality !== 'flanker') return;
+  aiTruckTimer += dt;
+  if (aiTruckTimer < 30) return;
+  aiTruckTimer = 0;
+  if (yellowEcon.spend(STRUCTURE_COSTS.bridge_truck)) {
+    bridgeTrucks.spawn('yellow', 75, Math.floor(Math.random()*(GRID_SIZE-10))+5, false);
+  }
+}
+
+// ─── AI zone building ─────────────────────────────────────────────────────────
+let aiZoneTimer = 0;
+function tickAIZones(dt) {
+  aiZoneTimer += dt;
+  if (aiZoneTimer < 5) return;
+  aiZoneTimer = 0;
+  // AI places residential and commercial zones during the truce
+  if (!peacetime) return;
+  if (!yellowEcon.canAfford(STRUCTURE_COSTS.zone_res)) return;
+  const x = YELLOW_X_START + Math.floor(Math.random() * 30) + 2;
+  const z = Math.floor(Math.random() * (GRID_SIZE - 10)) + 5;
+  if (grid.get(x, z) === T.EMPTY) {
+    const type = Math.random() < 0.7 ? T.ZONE_RES : T.ZONE_COM;
+    yellowEcon.spend(STRUCTURE_COSTS.zone_res);
+    grid.set(x, z, type);
+    grid.meta[x][z] = { zoneLevel: 0, devTimer: 0 };
+
+    // Ensure adjacent road so zone can develop
+    const dirs = [[0,-1],[0,1],[-1,0],[1,0]];
+    let hasRoad = dirs.some(([dx,dz]) => {
+      const t = grid.get(x+dx, z+dz);
+      return t === T.ROAD || t === T.BRIDGE;
+    });
+    if (!hasRoad) {
+      const [dx, dz] = dirs[Math.floor(Math.random() * 4)];
+      const rx = x + dx, rz = z + dz;
+      if (grid.get(rx, rz) === T.EMPTY) grid.set(rx, rz, T.ROAD);
+    }
+    renderer.markDirty();
+  }
+}
+
+// ─── UI ───────────────────────────────────────────────────────────────────────
+function logMsg(msg) {
+  const el = document.getElementById('message-log');
+  const div = document.createElement('div');
+  div.className = 'msg';
+  div.textContent = msg;
+  el.appendChild(div);
+  setTimeout(() => div.remove(), 4000);
+}
+
+function fmt(n) { return Math.floor(n).toLocaleString(); }
+
+function updateUI() {
+  document.getElementById('blue-cash').textContent    = fmt(blueEcon.cash);
+  document.getElementById('blue-hqs').textContent     = blueEcon.hqCount;
+  document.getElementById('blue-pop').textContent     = fmt(blueEcon.population);
+  document.getElementById('blue-income').textContent  = fmt(blueEcon.incomePerSec);
+
+  // RCI demand bars
+  const bd = demand.blue;
+  document.getElementById('blue-rci-r').style.width = Math.round(bd.r * 100) + '%';
+  document.getElementById('blue-rci-c').style.width = Math.round(bd.c * 100) + '%';
+  document.getElementById('blue-rci-i').style.width = Math.round(bd.i * 100) + '%';
+
+  document.getElementById('yellow-cash').textContent   = fmt(yellowEcon.cash);
+  document.getElementById('yellow-hqs').textContent    = yellowEcon.hqCount;
+  document.getElementById('yellow-pop').textContent    = fmt(yellowEcon.population);
+  document.getElementById('yellow-income').textContent = fmt(yellowEcon.incomePerSec);
+
+  const rem  = Math.max(0, PEACE_DURATION - elapsedSec);
+  const el   = document.getElementById('timer');
+  el.textContent = `${Math.floor(rem/60)}:${String(Math.floor(rem%60)).padStart(2,'0')}`;
+  el.className   = peacetime ? 'peace' : 'war';
+  document.getElementById('peace-label').textContent = peacetime ? 'PEACE TREATY' : 'WAR';
+
+  const lEl = document.getElementById('node-left'),  rEl = document.getElementById('node-right');
+  if (lEl) lEl.textContent = `◈ Left: ${edgeNodes.leftNode.owner.toUpperCase()} (${edgeNodes.leftNode.buff.replace('_',' ')})`;
+  if (rEl) rEl.textContent = `◈ Right: ${edgeNodes.rightNode.owner.toUpperCase()} (${edgeNodes.rightNode.buff.replace('_',' ')})`;
+  const pw = document.getElementById('plague-warn');
+  if (pw) pw.style.display = blueEcon.plagueActive ? 'block' : 'none';
+
+  blueEcon.tradePortMult   = edgeNodes.tradePortMult('blue');
+  yellowEcon.tradePortMult = edgeNodes.tradePortMult('yellow');
+}
+
+function checkWin() {
+  if (peacetime) return;
+  if (units.blueHQs.length   === 0) logMsg('YELLOW WINS — All Blue HQs destroyed!');
+  if (units.yellowHQs.length === 0) logMsg('BLUE WINS — All Yellow HQs destroyed!');
+}
+
+// ─── Game loop ────────────────────────────────────────────────────────────────
+// ─── Power network recompute (throttled) ──────────────────────────────────────
+let _powerTimer = 0;
+function tickPower(dt) {
+  _powerTimer += dt;
+  if (_powerTimer < 0.5) return;
+  _powerTimer = 0;
+  grid.computePower();
+}
+
+function loop(ts) {
+  const dt = lastTime === null ? 0 : Math.min((ts - lastTime) / 1000, 0.1);
+  lastTime = ts;
+  elapsedSec += dt;
+  peacetime = elapsedSec < PEACE_DURATION;
+
+  blueEcon.tick(dt);
+  yellowEcon.tick(dt);
+  tickPower(dt);
+  blueTraffic.tick(dt);
+  yellowTraffic.tick(dt);
+  blueWaste.tick(dt);
+  yellowWaste.tick(dt);
+  blueFreight.tick(dt);
+  yellowFreight.tick(dt);
+  edgeNodes.tick(dt, units.blueUnits, units.yellowUnits);
+  ai.tick(dt, peacetime, elapsedSec);
+  if (ai._aiDirty) { renderer.markDirty(); ai._aiDirty = false; }
+  units.tick(dt, grid);
+  tickBarracks(dt);
+  tickZoneDevelopment(dt);
+  tickAIZones(dt);
+  bridgeTrucks.tick(dt, grid);
+  tickAIBridgeTrucks(dt);
+
+  if (blueTrain.active   && !blueTrain.derailed)   processTrainEvents(blueTrain.tick(dt, grid, units));
+  tickAITrain(dt);
+
+  renderer.render(
+    dt, units, { blueTraffic, yellowTraffic },
+    bridgeTrucks, [blueTrain, yellowTrain],
+    edgeNodes, blueFreight, yellowFreight, blueWaste, yellowWaste
+  );
+  updateUI();
+  checkWin();
+  requestAnimationFrame(loop);
+}
+
+initStartingState();
+grid.computePower();
+requestAnimationFrame(loop);
+
+</script>
+</body>
+</html>
